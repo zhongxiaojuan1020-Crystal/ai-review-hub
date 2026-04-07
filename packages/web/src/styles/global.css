@@ -1,0 +1,130 @@
+/* AI短评圈 — Global flat/Apple style overrides */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  background: #F2F2F7;
+  color: #1C1C1E;
+}
+
+/* Flatten Ant Design cards */
+.ant-card {
+  border: 1px solid #E5E5EA !important;
+  box-shadow: none !important;
+  transition: border-color 0.15s ease !important;
+}
+
+.ant-card-hoverable:hover {
+  border-color: #FF6900 !important;
+  box-shadow: 0 2px 12px rgba(255, 105, 0, 0.10) !important;
+  transform: none !important;
+}
+
+/* Flatter buttons */
+.ant-btn {
+  font-weight: 500;
+  transition: all 0.15s cubic-bezier(0.4,0,0.2,1) !important;
+  box-shadow: none !important;
+}
+
+.ant-btn-primary {
+  background: #FF6900 !important;
+  border-color: #FF6900 !important;
+}
+
+.ant-btn-primary:hover {
+  background: #FF921B !important;
+  border-color: #FF921B !important;
+}
+
+.ant-btn-primary:active {
+  background: #E55C00 !important;
+}
+
+/* Remove Ant Design's default box-shadow on focused inputs */
+.ant-input:focus,
+.ant-input-focused,
+.ant-select-focused .ant-select-selector,
+.ant-picker-focused {
+  box-shadow: 0 0 0 2px rgba(255, 105, 0, 0.15) !important;
+}
+
+/* Flat modals */
+.ant-modal-content {
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12) !important;
+  border-radius: 12px !important;
+}
+
+/* Flat drawer */
+.ant-drawer-content {
+  box-shadow: -4px 0 24px rgba(0,0,0,0.08) !important;
+}
+
+/* Ant Design tag overrides */
+.ant-tag {
+  border-radius: 4px !important;
+  font-size: 12px !important;
+  line-height: 20px !important;
+  padding: 0 7px !important;
+}
+
+/* Slider track */
+.ant-slider-track {
+  background-color: #FF6900 !important;
+}
+
+.ant-slider-handle::after {
+  box-shadow: 0 0 0 2px #FF6900 !important;
+}
+
+/* Sider scrollbar */
+.ant-layout-sider::-webkit-scrollbar {
+  width: 0;
+}
+
+/* Menu items */
+.ant-menu-dark .ant-menu-item {
+  border-radius: 6px !important;
+  margin: 2px 8px !important;
+  width: calc(100% - 16px) !important;
+}
+
+/* Radio button group (flatter) */
+.ant-radio-button-wrapper {
+  font-size: 13px !important;
+}
+
+/* Tabs bottom border */
+.ant-tabs-nav::before {
+  border-bottom-color: #F2F2F7 !important;
+}
+
+/* Popconfirm / tooltip */
+.ant-popover-inner {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.10) !important;
+  border-radius: 8px !important;
+}
+
+/* Scrollbars — subtle */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #DEDEDE;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #AEAEB2;
+}

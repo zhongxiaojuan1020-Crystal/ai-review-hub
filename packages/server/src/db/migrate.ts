@@ -1,0 +1,99 @@
+import Database from 'better-sqlite3';
+import { getConfig } from '../config.js';
+import { DEFAULT_DIMENSION_WEIGHTS, DEFAULT_SUPERVISOR_WEIGHT, DEFAULT_GUEST_TOKEN_EXPIRY_HOURS } from '@ai-review/shared';
+
+const config = getConfig();
+const sqlite = new Database(config.databasePath);
+sqlite.pragma('journal_mode = WAL');
+sqlite.pragma('foreign_keys = ON');
+
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    avatar_url TEXT,
+    dingtalk_userid TEXT NOT NULL UNIQUE,
+    role TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('member', 'supervisor')),
+    is_active INTEGER NOT NULL DEFAULT 1,
+    domain_weights TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS reviews (
+    id TEXT PRIMARY KEY,
+    author_id TEXT NOT NULL REFERENCES users(id),
+    company TEXT NOT NULL,
+    description TEXT NOT NULL,
+    sections TEXT NOT NULL DEFAULT '[]',
+    tags TEXT NOT NULL DEFAULT '[]',
+    sources TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK(status IN ('in_progress', 'completed')),
+    heat_score REAL,
+    distributed INTEGER NOT NULL DEFAULT 0,
+    distributed_at TEXT,
+    completed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS scores (
+    id TEXT PRIMARY KEY,
+    review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+    scorer_id TEXT NOT NULL REFERENCES users(id),
+    relevance REAL NOT NULL CHECK(relevance >= 0 AND relevance <= 5),
+    necessity REAL NOT NULL CHECK(necessity >= 0 AND necessity <= 5),
+    importance REAL NOT NULL CHECK(importance >= 0 AND importance <= 5),
+    urgency REAL NOT NULL CHECK(urgency >= 0 AND urgency <= 5),
+    logic REAL NOT NULL CHECK(logic >= 0 AND logic <= 5),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(review_id, scorer_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS comments (
+    id TEXT PRIMARY KEY,
+    review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+    author_id TEXT REFERENCES users(id),
+    guest_name TEXT,
+    content TEXT NOT NULL,
+    is_like INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS guest_tokens (
+    id TEXT PRIMARY KEY,
+    review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+    token TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS config (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_scores_review_id ON scores(review_id);
+`);
+
+// Safe column additions for existing DBs
+try { sqlite.exec(`ALTER TABLE users ADD COLUMN password_hash TEXT`); } catch {}
+
+sqlite.exec(`
+  CREATE INDEX IF NOT EXISTS idx_reviews_status ON reviews(status);
+  CREATE INDEX IF NOT EXISTS idx_reviews_created_at ON reviews(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_comments_review_id ON comments(review_id);
+  CREATE INDEX IF NOT EXISTS idx_guest_tokens_token ON guest_tokens(token);
+`);
+
+// Seed default config
+const insertConfig = sqlite.prepare(
+  `INSERT OR IGNORE INTO config (key, value, updated_at) VALUES (?, ?, datetime('now'))`
+);
+insertConfig.run('dimension_weights', JSON.stringify(DEFAULT_DIMENSION_WEIGHTS));
+insertConfig.run('supervisor_weight', JSON.stringify(DEFAULT_SUPERVISOR_WEIGHT));
+insertConfig.run('guest_token_expiry_hours', JSON.stringify(DEFAULT_GUEST_TOKEN_EXPIRY_HOURS));
+
+console.log('Database migrated successfully at:', config.databasePath);
+sqlite.close();

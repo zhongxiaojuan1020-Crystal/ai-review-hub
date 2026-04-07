@@ -46,6 +46,5 @@ ENV HOST=0.0.0.0
 ENV SERVER_PORT=3000
 
 EXPOSE 3000
-VOLUME ["/data"]
 
 CMD ["node", "packages/server/dist/index.js"]

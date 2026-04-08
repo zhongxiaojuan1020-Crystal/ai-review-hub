@@ -15,6 +15,7 @@ interface AuthState {
   login: (name: string, password: string) => Promise<void>;
   logout: () => void;
   fetchMe: () => Promise<void>;
+  setUser: (user: AuthUser) => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -33,6 +34,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.removeItem('token');
     set({ token: null, user: null });
   },
+
+  setUser: (user: AuthUser) => set({ user }),
 
   fetchMe: async () => {
     const token = localStorage.getItem('token');

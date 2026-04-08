@@ -184,14 +184,14 @@ const ReviewPoolPage: React.FC = () => {
               inProgress.map(r => (
                 <div key={r.id} style={{ position: 'relative' }}>
                   <ReviewCard review={r} onClick={() => navigate(`/reviews/${r.id}`)} />
-                  {user?.role === 'supervisor' && r.canForceComplete && (
+                  {user?.role === 'supervisor' && r.status === 'in_progress' && (
                     <Button
                       size="small"
                       type="link"
                       style={{ position: 'absolute', top: 14, right: 16, color: '#FF6A00' }}
                       onClick={(e) => handleForceComplete(e, r.id)}
                     >
-                      强制完成
+                      强制结束评分
                     </Button>
                   )}
                 </div>

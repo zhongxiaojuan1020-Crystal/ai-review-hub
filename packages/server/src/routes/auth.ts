@@ -70,6 +70,45 @@ export async function authRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  // Update own profile (name + avatar)
+  app.put('/api/auth/profile', { preValidation: [app.authenticate] }, async (request, reply) => {
+    const { name, avatarUrl } = request.body as { name?: string; avatarUrl?: string | null };
+    const db = getDb();
+    const userId = (request.user as any).id;
+    const me = db.select().from(users).where(eq(users.id, userId)).get();
+    if (!me) return reply.status(404).send({ error: '用户不存在' });
+
+    const updates: Record<string, any> = {};
+
+    if (typeof name === 'string') {
+      const trimmed = name.trim();
+      if (!trimmed) return reply.status(400).send({ error: '昵称不能为空' });
+      if (trimmed.length > 20) return reply.status(400).send({ error: '昵称不能超过 20 字' });
+      if (trimmed !== me.name) {
+        // Ensure unique
+        const dup = db.select().from(users).where(eq(users.name, trimmed)).get();
+        if (dup && dup.id !== userId) {
+          return reply.status(400).send({ error: '该昵称已被占用' });
+        }
+        updates.name = trimmed;
+      }
+    }
+
+    if (avatarUrl !== undefined) {
+      if (avatarUrl && typeof avatarUrl === 'string' && avatarUrl.length > 2_500_000) {
+        return reply.status(400).send({ error: '头像图片过大，请换一张' });
+      }
+      updates.avatarUrl = avatarUrl || null;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      db.update(users).set(updates).where(eq(users.id, userId)).run();
+    }
+
+    const fresh = db.select().from(users).where(eq(users.id, userId)).get();
+    return { id: fresh!.id, name: fresh!.name, avatarUrl: fresh!.avatarUrl, role: fresh!.role };
+  });
+
   // Get current user info
   app.get('/api/auth/me', { preValidation: [app.authenticate] }, async (request) => {
     const db = getDb();

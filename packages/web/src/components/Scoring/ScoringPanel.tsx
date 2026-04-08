@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Button, Typography, Space, message, Slider, InputNumber, Tooltip, Tag } from 'antd';
-import { InfoCircleOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { Card, Button, Typography, Space, message, Slider, InputNumber, Tag } from 'antd';
+import { CheckCircleOutlined } from '@ant-design/icons';
 import { SCORE_DIMENSIONS } from '@ai-review/shared';
 import dayjs from 'dayjs';
 import api from '../../api/client';
@@ -91,13 +91,8 @@ const ScoringPanel: React.FC<Props> = ({ reviewId, isAuthor, onScoreSubmitted })
         {SCORE_DIMENSIONS.map(dim => (
           <div key={dim.key}>
             {/* Label row */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <Space size={6}>
-                <Text strong style={{ fontSize: 14 }}>{dim.label}</Text>
-                <Tooltip title={dim.description}>
-                  <InfoCircleOutlined style={{ color: '#bbb', fontSize: 13, cursor: 'pointer' }} />
-                </Tooltip>
-              </Space>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+              <Text strong style={{ fontSize: 14 }}>{dim.label}</Text>
               <InputNumber
                 min={0}
                 max={5}
@@ -111,6 +106,14 @@ const ScoringPanel: React.FC<Props> = ({ reviewId, isAuthor, onScoreSubmitted })
                 addonAfter={<Text style={{ fontSize: 11, color: '#aaa' }}>/5</Text>}
               />
             </div>
+            {/* Inline description */}
+            <Text
+              type="secondary"
+              italic
+              style={{ display: 'block', fontSize: 12, color: '#9a9a9a', lineHeight: 1.5, marginBottom: 6 }}
+            >
+              {dim.description}
+            </Text>
             {/* Slider */}
             <Slider
               min={0}

@@ -26,7 +26,7 @@ if (!fs.existsSync(dataDir)) {
 }
 
 
-const app = Fastify({ logger: true });
+const app = Fastify({ logger: true, bodyLimit: 50 * 1024 * 1024 });
 
 // CORS for dev
 await app.register(cors, { origin: true, credentials: true });

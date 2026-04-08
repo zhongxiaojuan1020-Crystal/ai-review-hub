@@ -5,4 +5,4 @@ aptPkgs = ["python3", "make", "g++"]
 cmds = ["npm run build"]
 
 [start]
-cmd = "node packages/server/dist/db/migrate.js && node packages/server/dist/index.js"
+cmd = "node packages/server/dist/index.js"

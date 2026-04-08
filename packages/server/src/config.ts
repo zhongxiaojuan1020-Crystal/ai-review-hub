@@ -22,7 +22,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '../../..');
 
 export function getConfig(): AppConfig {
   return {
-    port: parseInt(process.env.SERVER_PORT || '3000', 10),
+    port: parseInt(process.env.PORT || process.env.SERVER_PORT || '3000', 10),
     host: process.env.HOST || '0.0.0.0',
     databasePath: process.env.DATABASE_PATH || path.join(PROJECT_ROOT, 'data', 'aireviews.db'),
     jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-production',

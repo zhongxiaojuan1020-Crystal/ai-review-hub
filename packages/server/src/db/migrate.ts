@@ -95,5 +95,26 @@ insertConfig.run('dimension_weights', JSON.stringify(DEFAULT_DIMENSION_WEIGHTS))
 insertConfig.run('supervisor_weight', JSON.stringify(DEFAULT_SUPERVISOR_WEIGHT));
 insertConfig.run('guest_token_expiry_hours', JSON.stringify(DEFAULT_GUEST_TOKEN_EXPIRY_HOURS));
 
+// Seed initial team members if users table is empty
+const userCount = (sqlite.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }).count;
+if (userCount === 0) {
+  // Pre-hashed passwords (bcrypt, cost 10):
+  // 方文: fangwen, 衔木: xianmu, 司徒琳璟: situlinjing, 李飞宏: lifeihong, 阿离: ali
+  const seedUsers = [
+    { id: 'user_supervisor', name: '方文',    role: 'supervisor', hash: '$2b$10$7dgzlI4N6gscxMyq/QNZJOjHwQh3ZPYG3vdT9LVRyXtSi24BX0rGK' },
+    { id: 'user_xianmu',     name: '衔木',    role: 'member',     hash: '$2b$10$UPD5VneEX09v0eF1nNYMvebRgTx1qGruJ1eNujTZ5YHqkgi/kY.qS' },
+    { id: 'user_situlj',     name: '司徒琳璟', role: 'member',     hash: '$2b$10$fC/rkn6xHc5giafbiXfZRuZLrPD84tA5qnl94uhDr.Jfpkjq6qv9.' },
+    { id: 'user_lifeihong',  name: '李飞宏',  role: 'member',     hash: '$2b$10$VheXUZWp7ztoPSeTOhHfWuPo2qE1hcj2PWw0RhTQzdGCprZKRFgEK' },
+    { id: 'user_ali',        name: '阿离',    role: 'member',     hash: '$2b$10$yRSAkx1z2dct4FJdzwHGRetD1tLi.RmgVrkXrKRMxN1PC09EjoBiS' },
+  ];
+  const insertUser = sqlite.prepare(
+    `INSERT OR IGNORE INTO users (id, name, role, dingtalk_userid, password_hash) VALUES (?, ?, ?, ?, ?)`
+  );
+  for (const u of seedUsers) {
+    insertUser.run(u.id, u.name, u.role, u.id, u.hash);
+  }
+  console.log('Seeded 5 initial team members.');
+}
+
 console.log('Database migrated successfully at:', config.databasePath);
 sqlite.close();

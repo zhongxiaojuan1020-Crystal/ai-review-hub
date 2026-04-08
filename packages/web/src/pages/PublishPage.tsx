@@ -23,6 +23,7 @@ const PublishPage: React.FC = () => {
   const [body, setBody] = useState('');
   const [customTags, setCustomTags] = useState<TagDef[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [pickerLevel, setPickerLevel] = useState<'L1' | 'L2'>('L1');
 
   // Custom tag modal
   const [tagModalOpen, setTagModalOpen] = useState(false);
@@ -66,19 +67,28 @@ const PublishPage: React.FC = () => {
     }
   }, [editId]);
 
-  // Group tags by L1 domain
-  const groupedTags = useMemo(() => {
+  // Options for the right-hand tag dropdown, filtered by level
+  const tagPickerOptions = useMemo(() => {
+    if (pickerLevel === 'L1') {
+      const l1 = [
+        ...L1_TAGS,
+        ...customTags.filter(t => t.level === 'L1'),
+      ];
+      return l1.map(t => ({ label: t.label, value: t.label }));
+    }
+    // L2: group by parent domain for readability
     const allL2 = [...L2_TAGS, ...customTags.filter(t => t.level === 'L2')];
     const allL1Custom = customTags.filter(t => t.level === 'L1').map(t => t.label);
-    const groups: { domain: string; isCustom?: boolean; l2: TagDef[] }[] = MAIN_DOMAINS.map(d => ({
-      domain: d,
-      l2: allL2.filter(t => t.parent === d),
-    }));
-    for (const d of allL1Custom) {
-      groups.push({ domain: d, isCustom: true, l2: allL2.filter(t => t.parent === d) });
-    }
-    return groups;
-  }, [customTags]);
+    const domains = [...MAIN_DOMAINS, ...allL1Custom];
+    return domains
+      .map(d => ({
+        label: d,
+        options: allL2
+          .filter(t => t.parent === d)
+          .map(t => ({ label: t.label, value: t.label })),
+      }))
+      .filter(g => g.options.length > 0);
+  }, [pickerLevel, customTags]);
 
   const toggleTag = (label: string) => {
     setSelectedTags(prev =>
@@ -169,76 +179,69 @@ const PublishPage: React.FC = () => {
             label="主标题（目标公司 / 事件）"
             rules={[{ required: true, message: '请输入目标公司或事件' }]}
           >
-            <Input placeholder="如：Unitree 宇树 / OpenAI GPT-5 发布" size="large" />
+            <Input size="large" />
           </Form.Item>
 
           <Form.Item label="正文">
-            <RichEditor value={body} onChange={setBody} />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              像在 Word 里一样自由书写，支持加粗、斜体、列表、插图等。
-            </Text>
+            <RichEditor value={body} onChange={setBody} placeholder="" />
           </Form.Item>
 
           <Divider />
 
-          {/* Hierarchical tag picker */}
+          {/* Compact tag picker: level dropdown + tag multi-select */}
           <Form.Item label="标签" required>
-            <div style={{ background: '#fafafa', borderRadius: 8, padding: 12 }}>
-              {groupedTags.map(group => {
-                const l1Selected = selectedTags.includes(group.domain);
-                const l1Color = getTagColor(group.domain, customTags);
-                return (
-                  <div key={group.domain} style={{ marginBottom: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                      <AntTag
-                        onClick={() => toggleTag(group.domain)}
-                        style={{
-                          cursor: 'pointer',
-                          margin: 0,
-                          background: l1Selected ? l1Color.text : l1Color.bg,
-                          color: l1Selected ? '#fff' : l1Color.text,
-                          borderColor: l1Color.border,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {group.domain}
-                      </AntTag>
-                      {group.isCustom && <Text type="secondary" style={{ fontSize: 11 }}>（自定义）</Text>}
-                    </div>
-                    <Space size={[6, 6]} wrap style={{ paddingLeft: 12 }}>
-                      {group.l2.map(t => {
-                        const sel = selectedTags.includes(t.label);
-                        const c = getTagColor(t.label, customTags);
-                        return (
-                          <AntTag
-                            key={t.label}
-                            onClick={() => toggleTag(t.label)}
-                            style={{
-                              cursor: 'pointer',
-                              margin: 0,
-                              background: sel ? c.text : c.bg,
-                              color: sel ? '#fff' : c.text,
-                              borderColor: c.border,
-                            }}
-                          >
-                            {t.label}
-                          </AntTag>
-                        );
-                      })}
-                    </Space>
-                  </div>
-                );
-              })}
-              <Button
-                type="dashed"
-                size="small"
-                icon={<PlusOutlined />}
-                onClick={() => setTagModalOpen(true)}
-                style={{ marginTop: 6 }}
-              >
-                新增自定义标签
+            <Space.Compact style={{ width: '100%' }}>
+              <Select
+                value={pickerLevel}
+                onChange={setPickerLevel}
+                style={{ width: 130, flexShrink: 0 }}
+                options={[
+                  { label: '一级标签', value: 'L1' },
+                  { label: '二级标签', value: 'L2' },
+                ]}
+              />
+              <Select
+                mode="multiple"
+                style={{ flex: 1 }}
+                placeholder=""
+                value={selectedTags.filter(t => {
+                  // Show only the subset matching the current level in the input
+                  const def = [...L1_TAGS, ...L2_TAGS, ...customTags].find(d => d.label === t);
+                  return def ? def.level === pickerLevel : pickerLevel === 'L2';
+                })}
+                onChange={(vals: string[]) => {
+                  // Merge: keep selected tags from the *other* level, replace this level
+                  const otherLevel = selectedTags.filter(t => {
+                    const def = [...L1_TAGS, ...L2_TAGS, ...customTags].find(d => d.label === t);
+                    const lvl = def ? def.level : 'L2';
+                    return lvl !== pickerLevel;
+                  });
+                  setSelectedTags([...otherLevel, ...vals]);
+                }}
+                options={tagPickerOptions as any}
+                tagRender={(props) => {
+                  const { label, value, closable, onClose } = props;
+                  const c = getTagColor(value as string, customTags);
+                  return (
+                    <AntTag
+                      closable={closable}
+                      onClose={onClose}
+                      style={{
+                        marginInlineEnd: 4,
+                        background: c.bg,
+                        color: c.text,
+                        borderColor: c.border,
+                      }}
+                    >
+                      {label}
+                    </AntTag>
+                  );
+                }}
+              />
+              <Button icon={<PlusOutlined />} onClick={() => setTagModalOpen(true)}>
+                自定义
               </Button>
-            </div>
+            </Space.Compact>
             {selectedTags.length > 0 && (
               <div style={{ marginTop: 8 }}>
                 <Text type="secondary" style={{ fontSize: 12 }}>已选：</Text>
@@ -268,7 +271,7 @@ const PublishPage: React.FC = () => {
                 {fields.map(({ key, name, ...rest }) => (
                   <Space key={key} style={{ display: 'flex', marginTop: 8 }} align="start">
                     <Form.Item {...rest} name={name} style={{ marginBottom: 0, flex: 1, minWidth: 400 }}>
-                      <Input placeholder="链接地址，如 https://..." />
+                      <Input />
                     </Form.Item>
                     {fields.length > 1 && (
                       <MinusCircleOutlined onClick={() => remove(name)} style={{ color: '#999', marginTop: 8 }} />

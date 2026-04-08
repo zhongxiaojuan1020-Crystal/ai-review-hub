@@ -24,7 +24,7 @@ interface RichEditorProps {
 const RichEditor: React.FC<RichEditorProps> = ({
   value = '',
   onChange,
-  placeholder = '在这里开始写作… 支持加粗、斜体、插图等基础排版',
+  placeholder = '',
   minHeight = 320,
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
@@ -119,16 +119,11 @@ const RichEditor: React.FC<RichEditorProps> = ({
           </Upload>
         </Tooltip>
         <div style={{ flex: 1 }} />
-        <Space size={4}>
-          <span style={{ fontSize: 11, color: '#bfbfbf' }}>
-            支持 Word 式排版：加粗 / 斜体 / 图片
-          </span>
-        </Space>
       </div>
 
       {/* Editable canvas */}
       <div style={{ position: 'relative' }}>
-        {isEmpty && (
+        {isEmpty && placeholder && (
           <div
             style={{
               position: 'absolute',

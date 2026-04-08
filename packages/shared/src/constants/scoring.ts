@@ -15,30 +15,5 @@ export const SCORE_MIN = 0;
 export const SCORE_MAX = 5;
 export const AUTO_COMPLETE_HOURS = 24;
 
-// Maps specific tags to the 4 main domain categories
-export const TAG_DOMAIN_MAP: Record<string, string> = {
-  '基础模型': '基础模型',
-  'LLM': '基础模型',
-  '大模型': '基础模型',
-  '多模态': '基础模型',
-  'Transformer': '基础模型',
-  '预训练': '基础模型',
-  '具身智能': '具身智能',
-  '本体': '具身智能',
-  '机器人': '具身智能',
-  '人形机器人': '具身智能',
-  'AI Coding': 'AI Coding',
-  '代码': 'AI Coding',
-  '编程': 'AI Coding',
-  'Copilot': 'AI Coding',
-  '开发工具': 'AI Coding',
-  'AI应用': 'AI应用',
-  '应用': 'AI应用',
-  'SaaS': 'AI应用',
-  'Agent': 'AI应用',
-  '产品': 'AI应用',
-};
-
-// The 4 main domain categories
-export const MAIN_DOMAINS = ['基础模型', '具身智能', 'AI Coding', 'AI应用'] as const;
-export type Domain = typeof MAIN_DOMAINS[number];
+// Note: TAG_DOMAIN_MAP, MAIN_DOMAINS, and Domain are now exported from
+// ./tags.js (single source of truth for the tag taxonomy).

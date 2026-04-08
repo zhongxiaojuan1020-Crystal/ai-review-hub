@@ -12,6 +12,8 @@ import CommentList from '../components/Comments/CommentList';
 import { useAuthStore } from '../stores/authStore';
 import DistributePreview from '../components/Distribution/DistributePreview';
 import { ContentRenderer } from '../components/ContentRenderer';
+import HtmlRenderer from '../components/HtmlRenderer';
+import { getTagColor } from '@ai-review/shared';
 import api from '../api/client';
 
 const { Title, Text } = Typography;
@@ -116,7 +118,7 @@ const ReviewDetailPage: React.FC = () => {
         {/* Tags */}
         <div style={{ margin: '12px 0' }}>
           {(review.tags as string[])?.map((tag: string) => (
-            <Tag key={tag} style={{ borderColor: '#FFD591', background: '#FFF7E6', color: '#FF6A00' }}>
+            <Tag key={tag} style={(() => { const c = getTagColor(tag); return { borderColor: c.border, background: c.bg, color: c.text }; })()}>
               #{tag}
             </Tag>
           ))}
@@ -124,30 +126,36 @@ const ReviewDetailPage: React.FC = () => {
 
         <Divider />
 
-        {/* Event Description */}
-        <div style={{ marginBottom: 24 }}>
-          <Text strong style={{ fontSize: 14, color: '#999' }}>事件描述</Text>
-          <ContentRenderer
-            content={review.description}
-            style={{ fontSize: 15, marginTop: 8 }}
-          />
-        </div>
-
-        {/* Sections */}
-        {(review.sections as any[])?.map((section: any, idx: number) => (
-          <Card
-            key={idx}
-            size="small"
-            style={{ background: '#FFFAF0', borderColor: '#FFD591', marginBottom: 16 }}
-          >
-            <Text strong style={{ color: '#FF6A00' }}>{section.title}</Text>
-            <ContentRenderer
-              content={section.content}
-              legacyImages={section.images}
-              style={{ marginTop: 8 }}
-            />
-          </Card>
-        ))}
+        {/* Body (new rich-text editor) — falls back to description + sections for legacy reviews */}
+        {review.body ? (
+          <div style={{ marginBottom: 24 }}>
+            <HtmlRenderer html={review.body} />
+          </div>
+        ) : (
+          <>
+            <div style={{ marginBottom: 24 }}>
+              <Text strong style={{ fontSize: 14, color: '#999' }}>事件描述</Text>
+              <ContentRenderer
+                content={review.description}
+                style={{ fontSize: 15, marginTop: 8 }}
+              />
+            </div>
+            {(review.sections as any[])?.map((section: any, idx: number) => (
+              <Card
+                key={idx}
+                size="small"
+                style={{ background: '#FFFAF0', borderColor: '#FFD591', marginBottom: 16 }}
+              >
+                <Text strong style={{ color: '#FF6A00' }}>{section.title}</Text>
+                <ContentRenderer
+                  content={section.content}
+                  legacyImages={section.images}
+                  style={{ marginTop: 8 }}
+                />
+              </Card>
+            ))}
+          </>
+        )}
 
         {/* Sources */}
         {review.sources?.length > 0 && (

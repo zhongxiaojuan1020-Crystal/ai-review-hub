@@ -3,6 +3,8 @@ import { Modal, Card, Typography, Tag, Space, Divider, Spin, Button } from 'antd
 import { SendOutlined, UserOutlined, LikeOutlined, MessageOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { ContentRenderer } from '../ContentRenderer';
+import HtmlRenderer from '../HtmlRenderer';
+import { getTagColor } from '@ai-review/shared';
 import api from '../../api/client';
 
 const { Title, Text } = Typography;
@@ -67,7 +69,7 @@ const DistributePreview: React.FC<Props> = ({ reviewId, open, onCancel, onConfir
           {/* Tags */}
           <div style={{ margin: '10px 0' }}>
             {(review.tags as string[])?.map((tag: string) => (
-              <Tag key={tag} style={{ borderColor: '#FFD591', background: '#fff', color: '#FF6A00' }}>
+              <Tag key={tag} style={(() => { const c = getTagColor(tag); return { borderColor: c.border, background: c.bg, color: c.text }; })()}>
                 #{tag}
               </Tag>
             ))}
@@ -75,20 +77,24 @@ const DistributePreview: React.FC<Props> = ({ reviewId, open, onCancel, onConfir
 
           <Divider style={{ margin: '12px 0' }} />
 
-          {/* Description */}
-          <ContentRenderer content={review.description} style={{ fontSize: 14, color: '#333' }} />
-
-          {/* Sections */}
-          {(review.sections as any[])?.map((section: any, idx: number) => (
-            <div key={idx} style={{ marginBottom: 12, padding: '10px 14px', background: '#fff', borderRadius: 8, borderLeft: '3px solid #FF6A00' }}>
-              <Text strong style={{ color: '#FF6A00', fontSize: 14 }}>{section.title}</Text>
-              <ContentRenderer
-                content={section.content}
-                legacyImages={section.images}
-                style={{ marginTop: 4, fontSize: 13, color: '#555' }}
-              />
-            </div>
-          ))}
+          {/* Body (new rich-text) or legacy description + sections */}
+          {review.body ? (
+            <HtmlRenderer html={review.body} style={{ fontSize: 14 }} />
+          ) : (
+            <>
+              <ContentRenderer content={review.description} style={{ fontSize: 14, color: '#333' }} />
+              {(review.sections as any[])?.map((section: any, idx: number) => (
+                <div key={idx} style={{ marginBottom: 12, padding: '10px 14px', background: '#fff', borderRadius: 8, borderLeft: '3px solid #FF6A00' }}>
+                  <Text strong style={{ color: '#FF6A00', fontSize: 14 }}>{section.title}</Text>
+                  <ContentRenderer
+                    content={section.content}
+                    legacyImages={section.images}
+                    style={{ marginTop: 4, fontSize: 13, color: '#555' }}
+                  />
+                </div>
+              ))}
+            </>
+          )}
 
           {/* Sources */}
           {review.sources?.length > 0 && (

@@ -4,6 +4,8 @@ import { LikeOutlined, LikeFilled, MessageOutlined, UserOutlined, FireOutlined }
 import { useParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { ContentRenderer } from '../components/ContentRenderer';
+import HtmlRenderer from '../components/HtmlRenderer';
+import { getTagColor } from '@ai-review/shared';
 import api from '../api/client';
 
 const { Title, Text } = Typography;
@@ -139,7 +141,7 @@ const GuestViewPage: React.FC = () => {
           {/* Tags */}
           <div style={{ marginBottom: 14 }}>
             {(review.tags as string[])?.map((tag: string) => (
-              <Tag key={tag} style={{ borderColor: '#FFD591', background: '#FFF7E6', color: '#FF6A00', marginBottom: 4 }}>
+              <Tag key={tag} style={(() => { const c = getTagColor(tag); return { borderColor: c.border, background: c.bg, color: c.text, marginBottom: 4 }; })()}>
                 #{tag}
               </Tag>
             ))}
@@ -147,34 +149,38 @@ const GuestViewPage: React.FC = () => {
 
           <Divider style={{ margin: '12px 0' }} />
 
-          {/* Description */}
-          <ContentRenderer
-            content={review.description}
-            style={{ fontSize: 15, color: '#333', marginBottom: 16, lineHeight: 1.8 }}
-          />
-
-          {/* Sections */}
-          {(review.sections as any[])?.map((section: any, idx: number) => (
-            <div
-              key={idx}
-              style={{
-                marginBottom: 12,
-                padding: '12px 14px',
-                background: '#FFFAF0',
-                borderRadius: 8,
-                borderLeft: '3px solid #FF6A00',
-              }}
-            >
-              <Text strong style={{ color: '#FF6A00', fontSize: 14, display: 'block', marginBottom: 6 }}>
-                {section.title}
-              </Text>
+          {/* Body (new rich-text) or legacy description + sections */}
+          {review.body ? (
+            <HtmlRenderer html={review.body} style={{ marginBottom: 16 }} />
+          ) : (
+            <>
               <ContentRenderer
-                content={section.content}
-                legacyImages={section.images}
-                style={{ fontSize: 14, color: '#555' }}
+                content={review.description}
+                style={{ fontSize: 15, color: '#333', marginBottom: 16, lineHeight: 1.8 }}
               />
-            </div>
-          ))}
+              {(review.sections as any[])?.map((section: any, idx: number) => (
+                <div
+                  key={idx}
+                  style={{
+                    marginBottom: 12,
+                    padding: '12px 14px',
+                    background: '#FFFAF0',
+                    borderRadius: 8,
+                    borderLeft: '3px solid #FF6A00',
+                  }}
+                >
+                  <Text strong style={{ color: '#FF6A00', fontSize: 14, display: 'block', marginBottom: 6 }}>
+                    {section.title}
+                  </Text>
+                  <ContentRenderer
+                    content={section.content}
+                    legacyImages={section.images}
+                    style={{ fontSize: 14, color: '#555' }}
+                  />
+                </div>
+              ))}
+            </>
+          )}
 
           {/* Sources */}
           {review.sources?.length > 0 && (

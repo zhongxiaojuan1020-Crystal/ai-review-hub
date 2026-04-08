@@ -18,6 +18,8 @@ export const reviews = sqliteTable('reviews', {
   authorId: text('author_id').notNull().references(() => users.id),
   company: text('company').notNull(),
   description: text('description').notNull(),
+  /** Rich-text HTML body (new unified editor). When present, renderers prefer this over `sections`. */
+  body: text('body'),
   sections: text('sections', { mode: 'json' }).notNull().$type<{ title: string; content: string; images?: string[] }[]>(),
   tags: text('tags', { mode: 'json' }).notNull().$type<string[]>(),
   sources: text('sources', { mode: 'json' }).notNull().$type<string[]>().default([]),

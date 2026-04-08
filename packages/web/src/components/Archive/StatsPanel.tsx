@@ -2,25 +2,12 @@ import React, { useMemo, useState } from 'react';
 import { Card, Radio, Typography, Space, Tag, Avatar, DatePicker } from 'antd';
 import { FireOutlined, FileTextOutlined, CheckCircleOutlined, UserOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
-import { TAG_DOMAIN_MAP } from '@ai-review/shared';
+import { DOMAIN_COLOR, reviewDomainFromTags, getTagColor } from '@ai-review/shared';
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
 
-const DOMAIN_COLOR: Record<string, string> = {
-  'AI应用':  '#FF6900',
-  '具身智能': '#FF921B',
-  'AI Coding': '#F8A030',
-  '基础模型': '#C8500A',
-};
-
-function reviewDomain(tags: string[]): string {
-  for (const tag of tags) {
-    const d = TAG_DOMAIN_MAP[tag];
-    if (d) return d;
-  }
-  return '其他';
-}
+const reviewDomain = (tags: string[]): string => reviewDomainFromTags(tags || []);
 
 type PeriodMode = 'week' | 'month' | 'custom';
 
@@ -246,17 +233,20 @@ const StatsPanel: React.FC<Props> = ({ reviews }) => {
       {tagCounts.length > 0 && (
         <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed #FFD591' }}>
           <Text style={{ fontSize: 12, color: '#888', marginRight: 8 }}>热门标签</Text>
-          {tagCounts.map(([tag, count]) => (
-            <Tag
-              key={tag}
-              style={{
-                fontSize: 11, marginBottom: 4,
-                borderColor: '#FFD591', background: '#fff', color: '#FF6A00',
-              }}
-            >
-              #{tag} <span style={{ color: '#bbb', marginLeft: 2 }}>{count}</span>
-            </Tag>
-          ))}
+          {tagCounts.map(([tag, count]) => {
+            const c = getTagColor(tag);
+            return (
+              <Tag
+                key={tag}
+                style={{
+                  fontSize: 11, marginBottom: 4,
+                  borderColor: c.border, background: c.bg, color: c.text,
+                }}
+              >
+                #{tag} <span style={{ color: '#bbb', marginLeft: 2 }}>{count}</span>
+              </Tag>
+            );
+          })}
         </div>
       )}
     </Card>

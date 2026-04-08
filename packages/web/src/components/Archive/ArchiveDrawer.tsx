@@ -6,26 +6,13 @@ import {
 import { FireOutlined, SendOutlined, UserOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { TAG_DOMAIN_MAP, MAIN_DOMAINS } from '@ai-review/shared';
+import { MAIN_DOMAINS, DOMAIN_COLOR, reviewDomainFromTags } from '@ai-review/shared';
 import api from '../../api/client';
 
 const { Text } = Typography;
 const { Search } = Input;
 
-const DOMAIN_COLOR: Record<string, string> = {
-  'AI应用':  '#FF6900',
-  '具身智能': '#FF921B',
-  'AI Coding': '#F8A030',
-  '基础模型': '#C8500A',
-};
-
-function reviewDomain(tags: string[]): string {
-  for (const tag of tags) {
-    const d = TAG_DOMAIN_MAP[tag];
-    if (d) return d;
-  }
-  return '其他';
-}
+const reviewDomain = (tags: string[]): string => reviewDomainFromTags(tags || []);
 
 interface Props {
   open: boolean;

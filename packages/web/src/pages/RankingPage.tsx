@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import dayjs, { Dayjs } from 'dayjs';
 import { useAuthStore } from '../stores/authStore';
 import DistributePreview from '../components/Distribution/DistributePreview';
+import { getTagColor } from '@ai-review/shared';
 import api from '../api/client';
 
 const { Text, Title, Paragraph } = Typography;
@@ -192,7 +193,7 @@ const RankingPage: React.FC = () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f5f5f5', paddingTop: 10 }}>
                   <Space size={4} wrap>
                     {(record.tags as string[])?.map((tag: string) => (
-                      <Tag key={tag} style={{ borderColor: '#FFD591', background: '#FFF7E6', color: '#FF6A00', fontSize: 11, margin: 0 }}>
+                      <Tag key={tag} style={(() => { const c = getTagColor(tag); return { borderColor: c.border, background: c.bg, color: c.text, fontSize: 11, margin: 0 }; })()}>
                         #{tag}
                       </Tag>
                     ))}

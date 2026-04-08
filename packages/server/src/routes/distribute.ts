@@ -1,10 +1,40 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyRequest } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { getDb } from '../db/index.js';
-import { reviews } from '../db/schema.js';
+import { reviews, users } from '../db/schema.js';
 import { generateGuestToken } from '../services/guest-token.js';
-import { getConfig } from '../config.js';
 import { sendDistributeNotification } from '../services/dingtalk.js';
+
+/**
+ * Resolve the public-facing base URL for links sent out to external users.
+ *
+ * Priority order:
+ *   1) BASE_URL env var (explicit override)
+ *   2) RAILWAY_PUBLIC_DOMAIN env var (Railway auto-injects this)
+ *   3) Request headers (x-forwarded-host / host)
+ *   4) localhost fallback (dev only)
+ *
+ * This fixes the case where an operator distributes from a Railway deployment
+ * without setting BASE_URL and the DingTalk card points to localhost.
+ */
+function resolvePublicBaseUrl(request: FastifyRequest): string {
+  const envBase = process.env.BASE_URL;
+  if (envBase && !envBase.includes('localhost')) return envBase.replace(/\/$/, '');
+
+  const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN;
+  if (railwayDomain) return `https://${railwayDomain}`;
+
+  const fwdHost = request.headers['x-forwarded-host'];
+  const host = (Array.isArray(fwdHost) ? fwdHost[0] : fwdHost) || request.headers.host;
+  if (host) {
+    const fwdProto = request.headers['x-forwarded-proto'];
+    const proto = (Array.isArray(fwdProto) ? fwdProto[0] : fwdProto)
+      || (host.includes('localhost') ? 'http' : 'https');
+    return `${proto}://${host}`;
+  }
+
+  return envBase || 'http://localhost:3000';
+}
 
 export async function distributeRoutes(app: FastifyInstance) {
   // Distribute a single review (supervisor only)
@@ -21,8 +51,13 @@ export async function distributeRoutes(app: FastifyInstance) {
 
     // Generate guest token for the review
     const token = generateGuestToken(reviewId);
-    const config = getConfig();
-    const guestUrl = `${config.baseUrl}/guest/${token}`;
+    const baseUrl = resolvePublicBaseUrl(request);
+    const guestUrl = `${baseUrl}/guest/${token}`;
+
+    // Look up the author for the card byline
+    const author = review.authorId
+      ? db.select().from(users).where(eq(users.id, review.authorId)).get()
+      : null;
 
     // Mark as distributed
     db.update(reviews).set({
@@ -31,17 +66,22 @@ export async function distributeRoutes(app: FastifyInstance) {
       updatedAt: new Date().toISOString(),
     }).where(eq(reviews.id, reviewId)).run();
 
-    // Send DingTalk notification (async, don't block response)
-    sendDistributeNotification({
+    // Send DingTalk notification and surface any errcode/errmsg to the user
+    const dtResult = await sendDistributeNotification({
       reviewTitle: review.company,
+      authorName: author?.name || '',
       description: typeof review.description === 'string' ? review.description : '',
       opinions: (review.sections as any[]).map((s: any) => s.title).filter(Boolean),
-      tags: review.tags as string[],
+      tags: (review.tags as string[]) || [],
       heatScore: review.heatScore,
       guestUrl,
     });
 
-    return { success: true, guestUrl };
+    return {
+      success: true,
+      guestUrl,
+      dingtalk: dtResult, // { ok, errcode, errmsg, reason }
+    };
   });
 
   // Generate guest link for a review
@@ -51,8 +91,8 @@ export async function distributeRoutes(app: FastifyInstance) {
 
     const { id } = request.params as { id: string };
     const token = generateGuestToken(id);
-    const config = getConfig();
-    return { url: `${config.baseUrl}/guest/${token}` };
+    const baseUrl = resolvePublicBaseUrl(request);
+    return { url: `${baseUrl}/guest/${token}` };
   });
 
   // Distribution history

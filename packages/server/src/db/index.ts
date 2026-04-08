@@ -82,6 +82,18 @@ function runMigrations(sqlite: InstanceType<typeof Database>) {
     CREATE INDEX IF NOT EXISTS idx_guest_tokens_token ON guest_tokens(token);
   `);
 
+  // Inline migrations for columns added after v1
+  // Add reviews.body (nullable HTML) for the unified rich-text editor
+  try {
+    const cols = sqlite.prepare(`PRAGMA table_info(reviews)`).all() as Array<{ name: string }>;
+    if (!cols.some(c => c.name === 'body')) {
+      sqlite.exec(`ALTER TABLE reviews ADD COLUMN body TEXT`);
+      console.log('[migration] added reviews.body column');
+    }
+  } catch (err) {
+    console.error('[migration] reviews.body failed:', err);
+  }
+
   // Seed default config
   const insertConfig = sqlite.prepare(
     `INSERT OR IGNORE INTO config (key, value, updated_at) VALUES (?, ?, datetime('now'))`

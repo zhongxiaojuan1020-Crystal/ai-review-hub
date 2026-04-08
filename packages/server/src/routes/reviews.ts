@@ -90,7 +90,8 @@ export async function reviewRoutes(app: FastifyInstance) {
       id,
       authorId: userId,
       company: body.company,
-      description: body.description,
+      description: body.description || '',
+      body: body.body || null,
       sections: body.sections || [],
       tags: body.tags || [],
       sources: body.sources || [],
@@ -125,6 +126,7 @@ export async function reviewRoutes(app: FastifyInstance) {
     db.update(reviews).set({
       company: body.company ?? review.company,
       description: body.description ?? review.description,
+      body: body.body !== undefined ? body.body : review.body,
       sections: body.sections ?? review.sections,
       tags: body.tags ?? review.tags,
       sources: body.sources ?? review.sources,

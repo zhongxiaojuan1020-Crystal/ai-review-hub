@@ -6,6 +6,7 @@ import dayjs from 'dayjs';
 import { useAuthStore } from '../stores/authStore';
 import ArchiveDrawer from '../components/Archive/ArchiveDrawer';
 import StatsPanel from '../components/Archive/StatsPanel';
+import { getTagColor } from '@ai-review/shared';
 import api from '../api/client';
 
 const { Text, Paragraph } = Typography;
@@ -30,9 +31,20 @@ const MiniScoreAvatars: React.FC<{ scorers: any[] }> = ({ scorers }) => (
   </div>
 );
 
+/** Strip HTML tags and extract plain text from a rich-text body. */
+function plainTextFromHtml(html: string): string {
+  if (!html) return '';
+  if (typeof document === 'undefined') return html.replace(/<[^>]*>/g, '');
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  return (tmp.textContent || '').trim();
+}
+
 const ReviewCard: React.FC<{ review: any; onClick: () => void }> = ({ review, onClick }) => {
   const progress = review.scoringProgress;
   const sections: any[] = review.sections || [];
+  const hasBody = !!review.body;
+  const bodyPreview = hasBody ? plainTextFromHtml(review.body) : '';
 
   return (
     <Card
@@ -64,14 +76,14 @@ const ReviewCard: React.FC<{ review: any; onClick: () => void }> = ({ review, on
 
       {/* Row 2: event description */}
       <Paragraph
-        ellipsis={{ rows: 1 }}
+        ellipsis={{ rows: 2 }}
         style={{ color: '#888', fontSize: 13, marginBottom: 10, lineHeight: 1.6 }}
       >
-        {review.description}
+        {hasBody ? bodyPreview : review.description}
       </Paragraph>
 
-      {/* Row 3: section titles as viewpoint pills */}
-      {sections.length > 0 && (
+      {/* Row 3: section titles as viewpoint pills (legacy reviews only) */}
+      {!hasBody && sections.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 10 }}>
           {sections.map((sec: any, i: number) => (
             <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
@@ -95,11 +107,14 @@ const ReviewCard: React.FC<{ review: any; onClick: () => void }> = ({ review, on
       {/* Row 4: tags + author + avatars */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f5f5f5', paddingTop: 10 }}>
         <Space size={4} wrap>
-          {(review.tags as string[])?.map((tag: string) => (
-            <Tag key={tag} style={{ borderColor: '#FFD591', background: '#FFF7E6', color: '#FF6A00', fontSize: 11, margin: 0 }}>
-              #{tag}
-            </Tag>
-          ))}
+          {(review.tags as string[])?.map((tag: string) => {
+            const c = getTagColor(tag);
+            return (
+              <Tag key={tag} style={{ borderColor: c.border, background: c.bg, color: c.text, fontSize: 11, margin: 0 }}>
+                #{tag}
+              </Tag>
+            );
+          })}
         </Space>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, marginLeft: 12 }}>
           <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>

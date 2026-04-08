@@ -30,8 +30,20 @@ const DistributePage: React.FC = () => {
 
   const handleDistribute = async (reviewId: string) => {
     try {
-      await api.post('/api/distribute', { reviewId });
-      message.success('分发成功');
+      const res = await api.post('/api/distribute', { reviewId });
+      const dt = res.data?.dingtalk;
+      if (dt && !dt.ok) {
+        const hint = dt.errcode === 310000
+          ? '（提示：自定义关键词或加签密钥不匹配）'
+          : dt.errcode === 300001
+            ? '（提示：Webhook URL 无效）'
+            : dt.reason === 'not_configured'
+              ? '（请在系统设置中配置 Webhook）'
+              : '';
+        message.warning(`已标记为已分发，但钉钉推送失败：${dt.errmsg || dt.reason || '未知'} ${hint}`);
+      } else {
+        message.success('分发成功');
+      }
       fetchData();
     } catch (err: any) {
       message.error(err.response?.data?.error || '分发失败');

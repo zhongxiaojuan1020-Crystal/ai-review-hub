@@ -4,17 +4,10 @@ import {
   Form, Input, Select, Badge,
 } from 'antd';
 import { SettingOutlined, UserAddOutlined, PauseCircleOutlined, PlayCircleOutlined, BellOutlined } from '@ant-design/icons';
-import { MAIN_DOMAINS } from '@ai-review/shared';
+import { MAIN_DOMAINS, DOMAIN_COLOR } from '@ai-review/shared';
 import api from '../api/client';
 
 const { Title, Text } = Typography;
-
-const DOMAIN_COLOR: Record<string, string> = {
-  'AI应用':  '#FF6900',
-  '具身智能': '#FF921B',
-  'AI Coding': '#F8A030',
-  '基础模型': '#C8500A',
-};
 
 const SettingsPage: React.FC = () => {
   const [supervisorShare, setSupervisorShare] = useState(40);
@@ -28,7 +21,9 @@ const SettingsPage: React.FC = () => {
   const [form] = Form.useForm();
 
   const [webhook, setWebhook] = useState('');
+  const [webhookSecret, setWebhookSecret] = useState('');
   const [webhookLoading, setWebhookLoading] = useState(false);
+  const [webhookTesting, setWebhookTesting] = useState(false);
 
   useEffect(() => {
     api.get('/api/ranking/config').then(res => {
@@ -36,6 +31,7 @@ const SettingsPage: React.FC = () => {
     }).catch(() => {});
     api.get('/api/config').then(res => {
       setWebhook(res.data.dingtalk_webhook || '');
+      setWebhookSecret(res.data.dingtalk_secret || '');
     }).catch(() => {});
     loadMembers();
   }, []);
@@ -71,12 +67,32 @@ const SettingsPage: React.FC = () => {
   const handleSaveWebhook = async () => {
     setWebhookLoading(true);
     try {
-      await api.put('/api/config', { dingtalk_webhook: webhook });
+      await api.put('/api/config', {
+        dingtalk_webhook: webhook,
+        dingtalk_secret: webhookSecret,
+      });
       message.success('Webhook 已保存');
     } catch {
       message.error('保存失败');
     }
     setWebhookLoading(false);
+  };
+
+  const handleTestWebhook = async () => {
+    setWebhookTesting(true);
+    try {
+      await api.post('/api/config/dingtalk/test');
+      message.success('测试消息已发送，请检查群聊');
+    } catch (err: any) {
+      const e = err?.response?.data;
+      const hint = e?.errcode === 310000
+        ? '（提示：可能是自定义关键词或加签密钥未匹配）'
+        : e?.errcode === 300001
+          ? '（提示：Webhook URL 无效或已被删除）'
+          : '';
+      message.error(`发送失败：${e?.error || '未知错误'} ${hint}`);
+    }
+    setWebhookTesting(false);
   };
 
   const handleAddMember = async () => {
@@ -202,16 +218,39 @@ const SettingsPage: React.FC = () => {
         size="small"
         style={{ marginBottom: 16, borderColor: '#FFD591' }}
       >
-        <Space.Compact style={{ width: '100%' }}>
-          <Input
-            placeholder="https://oapi.dingtalk.com/robot/send?access_token=..."
-            value={webhook}
-            onChange={e => setWebhook(e.target.value)}
-          />
-          <Button type="primary" loading={webhookLoading} onClick={handleSaveWebhook}>
-            保存
-          </Button>
-        </Space.Compact>
+        <Space direction="vertical" style={{ width: '100%' }} size={10}>
+          <div>
+            <Text style={{ fontSize: 12, color: '#999', display: 'block', marginBottom: 4 }}>
+              Webhook 地址
+            </Text>
+            <Input
+              placeholder="https://oapi.dingtalk.com/robot/send?access_token=..."
+              value={webhook}
+              onChange={e => setWebhook(e.target.value)}
+            />
+          </div>
+          <div>
+            <Text style={{ fontSize: 12, color: '#999', display: 'block', marginBottom: 4 }}>
+              加签密钥（可选，机器人安全设置为"加签"时填写，以 SEC 开头）
+            </Text>
+            <Input.Password
+              placeholder="SECxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              value={webhookSecret}
+              onChange={e => setWebhookSecret(e.target.value)}
+            />
+          </div>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            提示：若机器人安全设置为"自定义关键词"，请包含关键词 <Text code>短评</Text>。
+          </Text>
+          <Space>
+            <Button type="primary" loading={webhookLoading} onClick={handleSaveWebhook}>
+              保存
+            </Button>
+            <Button loading={webhookTesting} onClick={handleTestWebhook}>
+              发送测试消息
+            </Button>
+          </Space>
+        </Space>
       </Card>
 
       {/* Team members */}

@@ -25,8 +25,6 @@ if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-// Run migrations on startup
-await import('./db/migrate.js');
 
 const app = Fastify({ logger: true });
 

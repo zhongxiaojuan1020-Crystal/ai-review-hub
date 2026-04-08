@@ -46,6 +46,30 @@ export async function authRoutes(app: FastifyInstance) {
     return { token, user: { id: user.id, name: user.name, avatarUrl: user.avatarUrl, role: user.role } };
   });
 
+  // Change own password
+  app.post('/api/auth/change-password', { preValidation: [app.authenticate] }, async (request, reply) => {
+    const { oldPassword, newPassword } = request.body as { oldPassword: string; newPassword: string };
+    if (!oldPassword || !newPassword) {
+      return reply.status(400).send({ error: '请输入旧密码和新密码' });
+    }
+    if (newPassword.length < 6) {
+      return reply.status(400).send({ error: '新密码至少 6 位' });
+    }
+    const db = getDb();
+    const userId = (request.user as any).id;
+    const user = db.select().from(users).where(eq(users.id, userId)).get();
+    if (!user || !user.passwordHash) {
+      return reply.status(404).send({ error: '用户不存在' });
+    }
+    const valid = await bcrypt.compare(oldPassword, user.passwordHash);
+    if (!valid) {
+      return reply.status(401).send({ error: '旧密码错误' });
+    }
+    const newHash = await bcrypt.hash(newPassword, 10);
+    db.update(users).set({ passwordHash: newHash }).where(eq(users.id, userId)).run();
+    return { ok: true };
+  });
+
   // Get current user info
   app.get('/api/auth/me', { preValidation: [app.authenticate] }, async (request) => {
     const db = getDb();

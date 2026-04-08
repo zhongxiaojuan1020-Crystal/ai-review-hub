@@ -3,7 +3,7 @@ import {
   Card, Button, Typography, Space, message, Slider, Table, Tag, Modal,
   Form, Input, Select, Badge,
 } from 'antd';
-import { SettingOutlined, UserAddOutlined, PauseCircleOutlined, PlayCircleOutlined, BellOutlined, KeyOutlined } from '@ant-design/icons';
+import { SettingOutlined, UserAddOutlined, PauseCircleOutlined, PlayCircleOutlined, BellOutlined, KeyOutlined, LockOutlined } from '@ant-design/icons';
 import { MAIN_DOMAINS } from '@ai-review/shared';
 import api from '../api/client';
 
@@ -33,6 +33,11 @@ const SettingsPage: React.FC = () => {
   const [pwdTarget, setPwdTarget] = useState<{ id: string; name: string } | null>(null);
   const [pwdValue, setPwdValue] = useState('');
   const [pwdLoading, setPwdLoading] = useState(false);
+
+  const [myOldPwd, setMyOldPwd] = useState('');
+  const [myNewPwd, setMyNewPwd] = useState('');
+  const [myNewPwd2, setMyNewPwd2] = useState('');
+  const [myPwdLoading, setMyPwdLoading] = useState(false);
 
   useEffect(() => {
     api.get('/api/ranking/config').then(res => {
@@ -79,6 +84,30 @@ const SettingsPage: React.FC = () => {
       message.error(err?.response?.data?.error || '设置失败');
     }
     setPwdLoading(false);
+  };
+
+  const handleChangeMyPassword = async () => {
+    if (!myOldPwd || !myNewPwd) {
+      message.error('请输入旧密码和新密码');
+      return;
+    }
+    if (myNewPwd.length < 6) {
+      message.error('新密码至少 6 位');
+      return;
+    }
+    if (myNewPwd !== myNewPwd2) {
+      message.error('两次输入的新密码不一致');
+      return;
+    }
+    setMyPwdLoading(true);
+    try {
+      await api.post('/api/auth/change-password', { oldPassword: myOldPwd, newPassword: myNewPwd });
+      message.success('密码修改成功');
+      setMyOldPwd(''); setMyNewPwd(''); setMyNewPwd2('');
+    } catch (err: any) {
+      message.error(err?.response?.data?.error || '修改失败');
+    }
+    setMyPwdLoading(false);
   };
 
   const handleToggle = async (id: string) => {
@@ -228,15 +257,41 @@ const SettingsPage: React.FC = () => {
         </Button>
       </Card>
 
+      {/* Change my password */}
+      <Card
+        title={<Space><LockOutlined style={{ color: '#FF6A00' }} /><span>修改我的密码</span></Space>}
+        size="small"
+        style={{ marginBottom: 16, borderColor: '#FFD591' }}
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size={10}>
+          <Input.Password
+            placeholder="旧密码"
+            value={myOldPwd}
+            onChange={e => setMyOldPwd(e.target.value)}
+          />
+          <Input.Password
+            placeholder="新密码（至少 6 位）"
+            value={myNewPwd}
+            onChange={e => setMyNewPwd(e.target.value)}
+          />
+          <Input.Password
+            placeholder="再次输入新密码"
+            value={myNewPwd2}
+            onChange={e => setMyNewPwd2(e.target.value)}
+            onPressEnter={handleChangeMyPassword}
+          />
+          <Button type="primary" loading={myPwdLoading} onClick={handleChangeMyPassword}>
+            保存新密码
+          </Button>
+        </Space>
+      </Card>
+
       {/* DingTalk webhook */}
       <Card
         title={<Space><BellOutlined style={{ color: '#FF6A00' }} /><span>钉钉群通知</span></Space>}
         size="small"
         style={{ marginBottom: 16, borderColor: '#FFD591' }}
       >
-        <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 13 }}>
-          配置钉钉群机器人 Webhook，成员发布短评时自动通知团队群，分发短评时也会推送给老板群。
-        </Text>
         <Space.Compact style={{ width: '100%' }}>
           <Input
             placeholder="https://oapi.dingtalk.com/robot/send?access_token=..."

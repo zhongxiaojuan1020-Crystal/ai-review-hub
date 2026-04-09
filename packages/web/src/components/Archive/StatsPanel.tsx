@@ -496,20 +496,10 @@ const StatsPanel: React.FC<Props> = ({ reviews }) => {
         </div>
       )}
 
-      {/* Two-column content */}
       {total === 0 ? (
         <Text type="secondary" style={{ fontSize: 12 }}>暂无数据</Text>
       ) : (
-        <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
-          {/* Left: Mekko treemap */}
-          <div style={{ flex: '0 0 58%' }}>
-            <MekkoChart data={domainBreakdown} height={CHART_H} />
-          </div>
-          {/* Right: Word cloud */}
-          <div style={{ flex: 1, minHeight: CHART_H }}>
-            <WordCloudCanvas words={keywords} />
-          </div>
-        </div>
+        <MekkoChart data={domainBreakdown} height={CHART_H} />
       )}
     </div>
   );

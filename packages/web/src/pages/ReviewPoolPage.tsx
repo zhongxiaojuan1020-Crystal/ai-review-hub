@@ -50,7 +50,12 @@ const ReviewCard: React.FC<{ review: any; onClick: () => void }> = ({ review, on
     <Card
       hoverable
       onClick={onClick}
-      style={{ marginBottom: 12, borderLeft: '4px solid #FF6A00' }}
+      className="paper-card"
+      style={{
+        marginBottom: 16,
+        borderLeft: '4px solid #FF6900',
+        background: '#FDFAF2',
+      }}
       styles={{ body: { padding: '16px 20px' } }}
     >
       {/* Row 1: title + status badge + heat score */}

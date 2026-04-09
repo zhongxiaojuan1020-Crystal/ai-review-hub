@@ -1,132 +1,58 @@
 import { eq } from 'drizzle-orm';
 import { getDb } from '../db/index.js';
 import { scores, reviews, users, config } from '../db/schema.js';
-import {
-  DEFAULT_DIMENSION_WEIGHTS,
-  SUPERVISOR_SCORE_SHARE,
-  TAG_DOMAIN_MAP,
-} from '@ai-review/shared';
-import type { DimensionKey } from '@ai-review/shared';
-
-interface DimensionWeights {
-  relevance: number;
-  necessity: number;
-  importance: number;
-  urgency: number;
-  logic: number;
-}
-
-const DIMENSIONS: DimensionKey[] = ['relevance', 'necessity', 'importance', 'urgency', 'logic'];
-
-/** Compute a single scorer's weighted dimension score (0–5). */
-function computeDimensionScore(
-  score: Record<string, any>,
-  dimWeights: DimensionWeights
-): number {
-  const weightSum = Object.values(dimWeights).reduce((a, b) => a + b, 0);
-  let total = 0;
-  for (const dim of DIMENSIONS) {
-    total += score[dim] * (dimWeights[dim as keyof DimensionWeights] ?? 0.2);
-  }
-  return total / weightSum;
-}
+import { SUPERVISOR_SCORE_SHARE } from '@ai-review/shared';
 
 /**
- * Determine a member's domain relevance weight for a review.
- * We take the max expertise weight across the review's matched domains.
- * Falls back to 0.3 (passing familiarity) if no domain matches.
+ * Compute heat score from the new 2-dim (quality + importance) scores.
+ * Each scorer contributes an average of their two stars (0-3 → normalised to 0-5).
+ * Supervisor weight = SUPERVISOR_SCORE_SHARE (40%), members share the rest.
  */
-function memberDomainRelevance(
-  reviewTags: string[],
-  userDomainWeights: Record<string, number> | null | undefined
-): number {
-  if (!userDomainWeights) return 0.5; // default if no expertise configured
-
-  const reviewDomains = new Set(
-    reviewTags.map(tag => TAG_DOMAIN_MAP[tag]).filter(Boolean)
-  );
-
-  if (reviewDomains.size === 0) return 0.5; // no recognizable domain — neutral
-
-  let maxRelevance = 0;
-  for (const domain of reviewDomains) {
-    const w = userDomainWeights[domain];
-    if (w !== undefined && w > maxRelevance) maxRelevance = w;
-  }
-  return maxRelevance > 0 ? maxRelevance : 0.3;
-}
-
 export async function calculateHeatScore(reviewId: string): Promise<number | null> {
   const db = getDb();
 
   const reviewScores = db.select().from(scores).where(eq(scores.reviewId, reviewId)).all();
   if (reviewScores.length === 0) return null;
 
-  // Get review tags for domain matching
-  const review = db.select().from(reviews).where(eq(reviews.id, reviewId)).get();
-  const reviewTags: string[] = (review?.tags as string[]) ?? [];
-
-  // Get dimension weights from config (falls back to equal weights)
-  const weightsRow = db.select().from(config).where(eq(config.key, 'dimension_weights')).get();
-  const dimWeights: DimensionWeights = weightsRow
-    ? (weightsRow.value as DimensionWeights)
-    : DEFAULT_DIMENSION_WEIGHTS;
-
-  // Get supervisor share from config (falls back to constant)
   const supShareRow = db.select().from(config).where(eq(config.key, 'supervisor_share')).get();
-  const supervisorShare: number = supShareRow
-    ? (supShareRow.value as number)
-    : SUPERVISOR_SCORE_SHARE;
+  const supervisorShare: number = supShareRow ? (supShareRow.value as number) : SUPERVISOR_SCORE_SHARE;
 
-  // Get all users for role + domain weight lookup
   const allUsers = db.select().from(users).where(eq(users.isActive, true)).all();
   const userMap = new Map(allUsers.map(u => [u.id, u]));
 
-  // Separate supervisor score from member scores
-  let supervisorDimScore: number | null = null;
-  const memberEntries: { dimScore: number; domainRelevance: number }[] = [];
+  // Compute each scorer's combined score (0–5 scale)
+  const entries: { isSupervisor: boolean; score: number }[] = [];
 
-  for (const score of reviewScores) {
-    const user = userMap.get(score.scorerId);
+  for (const s of reviewScores) {
+    const user = userMap.get(s.scorerId);
     if (!user) continue;
 
-    const dimScore = computeDimensionScore(score, dimWeights);
-
-    if (user.role === 'supervisor') {
-      supervisorDimScore = dimScore;
+    let combined: number;
+    if (s.qualityScore != null && s.importanceScore != null) {
+      // New system: avg of two 0-3 stars, scaled to 0-5
+      combined = ((s.qualityScore + s.importanceScore) / 2) * (5 / 3);
     } else {
-      const domainRelevance = memberDomainRelevance(reviewTags, user.domainWeights as Record<string, number> | null);
-      memberEntries.push({ dimScore, domainRelevance });
+      // Legacy fallback: avg of 5 dims
+      combined = (s.relevance + s.necessity + s.importance + s.urgency + s.logic) / 5;
     }
+
+    entries.push({ isSupervisor: user.role === 'supervisor', score: combined });
   }
 
-  // Build final weighted score
-  // - Supervisor always gets SUPERVISOR_SCORE_SHARE (40%) of total if they have scored
-  // - Remaining share (60%) distributed among members by their domain relevance weights
-  // - If supervisor hasn't scored yet, members share 100%
-  // - If no members have scored, supervisor gets 100%
+  const supEntries = entries.filter(e => e.isSupervisor);
+  const memberEntries = entries.filter(e => !e.isSupervisor);
 
   let totalScore = 0;
 
-  if (supervisorDimScore !== null && memberEntries.length > 0) {
-    // Normal case: supervisor gets supervisorShare, members share the rest
-    totalScore += supervisorShare * supervisorDimScore;
-
-    const memberRawTotal = memberEntries.reduce((s, m) => s + m.domainRelevance, 0);
-    const memberShare = 1 - supervisorShare;
-    for (const m of memberEntries) {
-      const weight = (m.domainRelevance / memberRawTotal) * memberShare;
-      totalScore += weight * m.dimScore;
-    }
-  } else if (supervisorDimScore !== null) {
-    // Only supervisor has scored
-    totalScore = supervisorDimScore;
+  if (supEntries.length > 0 && memberEntries.length > 0) {
+    const supScore = supEntries[0].score;
+    totalScore += supervisorShare * supScore;
+    const memberAvg = memberEntries.reduce((s, e) => s + e.score, 0) / memberEntries.length;
+    totalScore += (1 - supervisorShare) * memberAvg;
+  } else if (supEntries.length > 0) {
+    totalScore = supEntries[0].score;
   } else if (memberEntries.length > 0) {
-    // No supervisor score yet — normalize members to 100%
-    const memberRawTotal = memberEntries.reduce((s, m) => s + m.domainRelevance, 0);
-    for (const m of memberEntries) {
-      totalScore += (m.domainRelevance / memberRawTotal) * m.dimScore;
-    }
+    totalScore = memberEntries.reduce((s, e) => s + e.score, 0) / memberEntries.length;
   } else {
     return null;
   }
@@ -147,9 +73,9 @@ export async function checkAndCompleteReview(reviewId: string): Promise<boolean>
   const scoredUserIds = new Set(reviewScores.map(s => s.scorerId));
 
   const allScored = eligibleScorers.every(u => scoredUserIds.has(u.id));
+  const heatScore = await calculateHeatScore(reviewId);
 
   if (allScored) {
-    const heatScore = await calculateHeatScore(reviewId);
     db.update(reviews)
       .set({ status: 'completed', heatScore, completedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
       .where(eq(reviews.id, reviewId))
@@ -157,15 +83,12 @@ export async function checkAndCompleteReview(reviewId: string): Promise<boolean>
     return true;
   }
 
-  // Update real-time heat score even if not all scored
-  const heatScore = await calculateHeatScore(reviewId);
   if (heatScore !== null) {
     db.update(reviews)
       .set({ heatScore, updatedAt: new Date().toISOString() })
       .where(eq(reviews.id, reviewId))
       .run();
   }
-
   return false;
 }
 

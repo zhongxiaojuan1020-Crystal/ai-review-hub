@@ -128,14 +128,7 @@ const GuestViewPage: React.FC = () => {
             <Text type="secondary" style={{ fontSize: 13 }}>
               {dayjs(review.createdAt).format('YYYY-MM-DD')}
             </Text>
-            {review.heatScore != null && (
-              <Space size={3}>
-                <FireOutlined style={{ color: '#FF6A00', fontSize: 12 }} />
-                <Text style={{ color: '#FF6A00', fontWeight: 700, fontSize: 13 }}>
-                  热度 {review.heatScore.toFixed(2)}
-                </Text>
-              </Space>
-            )}
+            {/* heat score intentionally hidden on share/guest view */}
           </Space>
 
           {/* Tags */}

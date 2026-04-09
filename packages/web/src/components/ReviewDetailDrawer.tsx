@@ -230,7 +230,7 @@ const ReviewDetailDrawer: React.FC<Props> = ({ reviewId, open, onClose, onChange
               )}
               {isSupervisor && (
                 <Button size="small" icon={<LinkOutlined />} onClick={handleGenerateLink}>
-                  生成访客链接
+                  生成分享链接
                 </Button>
               )}
             </Space>
@@ -243,7 +243,11 @@ const ReviewDetailDrawer: React.FC<Props> = ({ reviewId, open, onClose, onChange
 
           {/* Comments */}
           <div style={{ marginTop: 12 }}>
-            <CommentList reviewId={review.id} />
+            <CommentList
+              reviewId={review.id}
+              reviewAuthorId={review.authorId}
+              onRevisionResolved={() => { fetchReview(); onChange?.(); }}
+            />
           </div>
 
           <DistributePreview

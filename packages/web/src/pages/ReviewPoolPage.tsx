@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Tabs, Card, Tag, Typography, Space, Empty, Spin, Button, Badge, Avatar, Tooltip, message } from 'antd';
-import { FireOutlined, ClockCircleOutlined, CheckCircleOutlined, SendOutlined, UserOutlined, InboxOutlined } from '@ant-design/icons';
+import { FireOutlined, ClockCircleOutlined, CheckCircleOutlined, SendOutlined, UserOutlined, InboxOutlined, ToolOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useAuthStore } from '../stores/authStore';
 import ArchiveDrawer from '../components/Archive/ArchiveDrawer';
@@ -61,6 +61,11 @@ const ReviewCard: React.FC<{ review: any; onClick: () => void }> = ({ review, on
             {review.distributed && <Tag color="green" icon={<SendOutlined />} style={{ margin: 0 }}>已分发</Tag>}
             {review.status === 'completed' && !review.distributed && (
               <Tag color="orange" icon={<CheckCircleOutlined />} style={{ margin: 0 }}>待审阅</Tag>
+            )}
+            {review.hasUnresolvedRevision && (
+              <Badge dot color="red" offset={[0, 0]}>
+                <Tag icon={<ToolOutlined />} color="error" style={{ margin: 0 }}>修改建议</Tag>
+              </Badge>
             )}
           </Space>
         </div>

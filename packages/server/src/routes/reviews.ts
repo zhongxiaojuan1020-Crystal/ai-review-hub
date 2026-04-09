@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { eq, desc } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getDb } from '../db/index.js';
-import { reviews, users, scores } from '../db/schema.js';
+import { reviews, users, scores, comments } from '../db/schema.js';
 import { AUTO_COMPLETE_HOURS } from '@ai-review/shared';
 import { getConfig } from '../config.js';
 import { sendPublishNotification } from '../services/dingtalk.js';
@@ -43,14 +43,20 @@ export async function reviewRoutes(app: FastifyInstance) {
 
     const allUsers = db.select().from(users).where(eq(users.isActive, true)).all();
     const allScores = db.select().from(scores).all();
+    const allComments = db.select().from(comments).all();
 
     return filtered.map(review => {
       const author = allUsers.find(u => u.id === review.authorId);
       const reviewScores = allScores.filter((s: any) => s.reviewId === review.id);
+      const reviewComments = allComments.filter((c: any) => c.reviewId === review.id);
+      const hasUnresolvedRevision = reviewComments.some(
+        (c: any) => c.isRevisionRequest && !c.isResolved
+      );
       return {
         ...review,
         author: author ? { id: author.id, name: author.name, avatarUrl: author.avatarUrl, role: author.role } : null,
         scoringProgress: buildScoringProgress(allUsers, review, reviewScores),
+        hasUnresolvedRevision,
         canForceComplete: review.status === 'in_progress' &&
           new Date(review.createdAt).getTime() + AUTO_COMPLETE_HOURS * 3600000 < Date.now(),
       };
@@ -68,11 +74,16 @@ export async function reviewRoutes(app: FastifyInstance) {
     const author = db.select().from(users).where(eq(users.id, review.authorId)).get();
     const allUsers = db.select().from(users).where(eq(users.isActive, true)).all();
     const reviewScores = db.select().from(scores).where(eq(scores.reviewId, id)).all();
+    const reviewComments = db.select().from(comments).where(eq(comments.reviewId, id)).all();
+    const hasUnresolvedRevision = reviewComments.some(
+      (c: any) => c.isRevisionRequest && !c.isResolved
+    );
 
     return {
       ...review,
       author: author ? { id: author.id, name: author.name, avatarUrl: author.avatarUrl, role: author.role } : null,
       scoringProgress: buildScoringProgress(allUsers, review, reviewScores),
+      hasUnresolvedRevision,
       canForceComplete: review.status === 'in_progress' &&
         new Date(review.createdAt).getTime() + AUTO_COMPLETE_HOURS * 3600000 < Date.now(),
     };

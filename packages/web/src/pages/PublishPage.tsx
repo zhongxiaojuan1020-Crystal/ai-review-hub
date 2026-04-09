@@ -42,8 +42,9 @@ const PublishPage: React.FC = () => {
     if (editId) {
       api.get(`/api/reviews/${editId}`).then(res => {
         const r = res.data;
+        const company = r.company.startsWith('【短评】') ? r.company : `【短评】${r.company}`;
         form.setFieldsValue({
-          company: r.company,
+          company,
           sources: r.sources?.length > 0 ? r.sources : [''],
         });
         setSelectedTags(r.tags || []);
@@ -172,12 +173,20 @@ const PublishPage: React.FC = () => {
           form={form}
           layout="vertical"
           onFinish={handleSubmit}
-          initialValues={{ sources: [''] }}
+          initialValues={{ sources: [''], company: '【短评】' }}
         >
           <Form.Item
             name="company"
             label="主标题（目标公司 / 事件）"
             rules={[{ required: true, message: '请输入目标公司或事件' }]}
+            getValueFromEvent={(e) => {
+              // Ensure 【短评】 prefix is always present
+              const raw: string = e.target.value;
+              if (!raw.startsWith('【短评】')) {
+                return '【短评】' + raw.replace(/^【短评】*/, '');
+              }
+              return raw;
+            }}
           >
             <Input size="large" />
           </Form.Item>

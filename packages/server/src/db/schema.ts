@@ -36,11 +36,18 @@ export const scores = sqliteTable('scores', {
   id: text('id').primaryKey(),
   reviewId: text('review_id').notNull().references(() => reviews.id, { onDelete: 'cascade' }),
   scorerId: text('scorer_id').notNull().references(() => users.id),
-  relevance: real('relevance').notNull(),
-  necessity: real('necessity').notNull(),
-  importance: real('importance').notNull(),
-  urgency: real('urgency').notNull(),
-  logic: real('logic').notNull(),
+  // Legacy 5-dimension scoring (0-5 each). Kept for backward compat.
+  relevance: real('relevance').notNull().default(0),
+  necessity: real('necessity').notNull().default(0),
+  importance: real('importance').notNull().default(0),
+  urgency: real('urgency').notNull().default(0),
+  logic: real('logic').notNull().default(0),
+  // New simplified 2-dimension scoring (0-3 stars each). When non-null, heat uses these.
+  qualityScore: real('quality_score'),
+  importanceScore: real('importance_score'),
+  // Revision request
+  needsRevision: integer('needs_revision', { mode: 'boolean' }).notNull().default(false),
+  revisionNote: text('revision_note'),
   createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
   updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
 }, (table) => [
@@ -54,6 +61,10 @@ export const comments = sqliteTable('comments', {
   guestName: text('guest_name'),
   content: text('content').notNull(),
   isLike: integer('is_like', { mode: 'boolean' }).notNull().default(false),
+  /** True when this comment is a revision request from a scorer. */
+  isRevisionRequest: integer('is_revision_request', { mode: 'boolean' }).notNull().default(false),
+  /** True when the review author has marked this revision request as resolved. */
+  isResolved: integer('is_resolved', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
 });
 

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Button, Typography, Space, message, Slider, InputNumber, Tag } from 'antd';
-import { CheckCircleOutlined } from '@ant-design/icons';
-import { SCORE_DIMENSIONS } from '@ai-review/shared';
+import { Card, Button, Typography, Space, message, Tag, Switch, Input } from 'antd';
+import { CheckCircleOutlined, StarFilled, StarOutlined } from '@ant-design/icons';
+import { NEW_SCORE_DIMENSIONS } from '@ai-review/shared';
 import dayjs from 'dayjs';
 import api from '../../api/client';
 
-const { Text } = Typography;
+const { Text, Paragraph } = Typography;
+const { TextArea } = Input;
 
 interface Props {
   reviewId: string;
@@ -13,10 +14,38 @@ interface Props {
   onScoreSubmitted?: () => void;
 }
 
+/** 3-star row: 0 / 1 / 2 / 3 */
+const StarRow: React.FC<{ value: number; onChange: (v: number) => void }> = ({ value, onChange }) => {
+  const [hovered, setHovered] = useState(0);
+
+  return (
+    <Space size={6}>
+      {[1, 2, 3].map(n => {
+        const filled = n <= (hovered || value);
+        return (
+          <span
+            key={n}
+            onClick={() => onChange(value === n ? 0 : n)}
+            onMouseEnter={() => setHovered(n)}
+            onMouseLeave={() => setHovered(0)}
+            style={{ cursor: 'pointer', fontSize: 26, color: filled ? '#FF6A00' : '#d9d9d9', lineHeight: 1 }}
+          >
+            {filled ? <StarFilled /> : <StarOutlined />}
+          </span>
+        );
+      })}
+      <Text type="secondary" style={{ fontSize: 13, marginLeft: 4 }}>
+        {value === 0 ? '—' : value === 1 ? '一般' : value === 2 ? '不错' : '很好'}
+      </Text>
+    </Space>
+  );
+};
+
 const ScoringPanel: React.FC<Props> = ({ reviewId, isAuthor, onScoreSubmitted }) => {
-  const [scores, setScores] = useState<Record<string, number>>({
-    relevance: 0, necessity: 0, importance: 0, urgency: 0, logic: 0,
-  });
+  const [qualityScore, setQualityScore] = useState(0);
+  const [importanceScore, setImportanceScore] = useState(0);
+  const [needsRevision, setNeedsRevision] = useState(false);
+  const [revisionNote, setRevisionNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasExisting, setHasExisting] = useState(false);
   const [scoredAt, setScoredAt] = useState<string | null>(null);
@@ -25,7 +54,10 @@ const ScoringPanel: React.FC<Props> = ({ reviewId, isAuthor, onScoreSubmitted })
     if (isAuthor) return;
     api.get(`/api/reviews/${reviewId}/my-score`).then(res => {
       if (res.data) {
-        setScores(res.data);
+        setQualityScore(res.data.quality_score ?? 0);
+        setImportanceScore(res.data.importance_score ?? 0);
+        setNeedsRevision(res.data.needs_revision ?? false);
+        setRevisionNote(res.data.revision_note ?? '');
         setHasExisting(true);
         setScoredAt(res.data.updatedAt || null);
       }
@@ -40,26 +72,26 @@ const ScoringPanel: React.FC<Props> = ({ reviewId, isAuthor, onScoreSubmitted })
     );
   }
 
-  const setScore = (key: string, val: number | null) => {
-    const v = val ?? 0;
-    const rounded = Math.round(v * 10) / 10;
-    setScores(prev => ({ ...prev, [key]: rounded }));
-  };
-
   const handleSubmit = async () => {
-    for (const dim of SCORE_DIMENSIONS) {
-      if (scores[dim.key] <= 0) {
-        message.warning(`请完成「${dim.label}」的评分（需大于 0）`);
-        return;
-      }
+    if (qualityScore === 0 || importanceScore === 0) {
+      message.warning('请完成两个维度的评分（至少 1 星）');
+      return;
+    }
+    if (needsRevision && !revisionNote.trim()) {
+      message.warning('请填写修改建议内容');
+      return;
     }
     setLoading(true);
     try {
-      await api.post(`/api/reviews/${reviewId}/scores`, scores);
-      const now = new Date().toISOString();
+      await api.post(`/api/reviews/${reviewId}/scores`, {
+        quality_score: qualityScore,
+        importance_score: importanceScore,
+        needs_revision: needsRevision,
+        revision_note: revisionNote.trim(),
+      });
       message.success(hasExisting ? '评分已更新' : '评分提交成功');
       setHasExisting(true);
-      setScoredAt(now);
+      setScoredAt(new Date().toISOString());
       onScoreSubmitted?.();
     } catch (err: any) {
       message.error(err.response?.data?.error || '提交失败');
@@ -83,52 +115,47 @@ const ScoringPanel: React.FC<Props> = ({ reviewId, isAuthor, onScoreSubmitted })
       style={{ borderColor: '#FFD591' }}
       extra={hasExisting && scoredAt && (
         <Text type="secondary" style={{ fontSize: 11 }}>
-          {dayjs(scoredAt).format('MM/DD HH:mm')} 已提交
+          {dayjs(scoredAt).format('MM/DD HH:mm')}
         </Text>
       )}
     >
-      <Space direction="vertical" style={{ width: '100%' }} size={20}>
-        {SCORE_DIMENSIONS.map(dim => (
+      <Space direction="vertical" style={{ width: '100%' }} size={18}>
+        {NEW_SCORE_DIMENSIONS.map(dim => (
           <div key={dim.key}>
-            {/* Label row */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+            <div style={{ marginBottom: 6 }}>
               <Text strong style={{ fontSize: 14 }}>{dim.label}</Text>
-              <InputNumber
-                min={0}
-                max={5}
-                step={0.1}
-                precision={1}
-                value={scores[dim.key]}
-                onChange={(val) => setScore(dim.key, val)}
-                style={{ width: 72 }}
-                size="small"
-                controls={false}
-                addonAfter={<Text style={{ fontSize: 11, color: '#aaa' }}>/5</Text>}
-              />
+              <Text type="secondary" italic style={{ display: 'block', fontSize: 12, color: '#9a9a9a', lineHeight: 1.5, marginTop: 2 }}>
+                {dim.description}
+              </Text>
             </div>
-            {/* Inline description */}
-            <Text
-              type="secondary"
-              italic
-              style={{ display: 'block', fontSize: 12, color: '#9a9a9a', lineHeight: 1.5, marginBottom: 6 }}
-            >
-              {dim.description}
-            </Text>
-            {/* Slider */}
-            <Slider
-              min={0}
-              max={5}
-              step={0.1}
-              value={scores[dim.key]}
-              onChange={(val) => setScore(dim.key, val)}
-              tooltip={{ formatter: (v) => `${v?.toFixed(1)}` }}
-              styles={{
-                track: { background: '#FF6A00' },
-                handle: { borderColor: '#FF6A00' },
-              }}
+            <StarRow
+              value={dim.key === 'quality_score' ? qualityScore : importanceScore}
+              onChange={dim.key === 'quality_score' ? setQualityScore : setImportanceScore}
             />
           </div>
         ))}
+
+        {/* Revision request toggle */}
+        <div style={{ borderTop: '1px dashed #FFD591', paddingTop: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: needsRevision ? 10 : 0 }}>
+            <Switch
+              size="small"
+              checked={needsRevision}
+              onChange={setNeedsRevision}
+              style={needsRevision ? { background: '#FF6A00' } : {}}
+            />
+            <Text style={{ fontSize: 13 }}>短评需要修改</Text>
+          </div>
+          {needsRevision && (
+            <TextArea
+              placeholder="请描述修改建议，会通知给作者..."
+              value={revisionNote}
+              onChange={e => setRevisionNote(e.target.value)}
+              rows={3}
+              style={{ borderColor: '#FFD591' }}
+            />
+          )}
+        </div>
 
         <Button
           type="primary"

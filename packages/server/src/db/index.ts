@@ -82,8 +82,24 @@ function runMigrations(sqlite: InstanceType<typeof Database>) {
     CREATE INDEX IF NOT EXISTS idx_guest_tokens_token ON guest_tokens(token);
   `);
 
+  // Patch existing review titles to include 【短评】 prefix
+  try {
+    const reviewsWithoutPrefix = sqlite.prepare(
+      `SELECT id, company FROM reviews WHERE company NOT LIKE '【短评】%'`
+    ).all() as Array<{ id: string; company: string }>;
+    if (reviewsWithoutPrefix.length > 0) {
+      const update = sqlite.prepare(`UPDATE reviews SET company = '【短评】' || company WHERE id = ?`);
+      for (const r of reviewsWithoutPrefix) {
+        update.run(r.id);
+      }
+      console.log(`[migration] added 【短评】 prefix to ${reviewsWithoutPrefix.length} review(s)`);
+    }
+  } catch (err) {
+    console.error('[migration] 【短评】 prefix patch failed:', err);
+  }
+
   // Inline migrations for columns added after v1
-  // Add reviews.body (nullable HTML) for the unified rich-text editor
+  // reviews.body — rich-text HTML for the unified editor
   try {
     const cols = sqlite.prepare(`PRAGMA table_info(reviews)`).all() as Array<{ name: string }>;
     if (!cols.some(c => c.name === 'body')) {
@@ -92,6 +108,46 @@ function runMigrations(sqlite: InstanceType<typeof Database>) {
     }
   } catch (err) {
     console.error('[migration] reviews.body failed:', err);
+  }
+
+  // scores — new 2-dim scoring columns + revision request
+  try {
+    const scoreCols = sqlite.prepare(`PRAGMA table_info(scores)`).all() as Array<{ name: string }>;
+    const scoreColNames = scoreCols.map(c => c.name);
+    if (!scoreColNames.includes('quality_score')) {
+      sqlite.exec(`ALTER TABLE scores ADD COLUMN quality_score REAL`);
+      console.log('[migration] added scores.quality_score');
+    }
+    if (!scoreColNames.includes('importance_score')) {
+      sqlite.exec(`ALTER TABLE scores ADD COLUMN importance_score REAL`);
+      console.log('[migration] added scores.importance_score');
+    }
+    if (!scoreColNames.includes('needs_revision')) {
+      sqlite.exec(`ALTER TABLE scores ADD COLUMN needs_revision INTEGER NOT NULL DEFAULT 0`);
+      console.log('[migration] added scores.needs_revision');
+    }
+    if (!scoreColNames.includes('revision_note')) {
+      sqlite.exec(`ALTER TABLE scores ADD COLUMN revision_note TEXT`);
+      console.log('[migration] added scores.revision_note');
+    }
+  } catch (err) {
+    console.error('[migration] scores new columns failed:', err);
+  }
+
+  // comments — revision request tracking
+  try {
+    const commentCols = sqlite.prepare(`PRAGMA table_info(comments)`).all() as Array<{ name: string }>;
+    const commentColNames = commentCols.map(c => c.name);
+    if (!commentColNames.includes('is_revision_request')) {
+      sqlite.exec(`ALTER TABLE comments ADD COLUMN is_revision_request INTEGER NOT NULL DEFAULT 0`);
+      console.log('[migration] added comments.is_revision_request');
+    }
+    if (!commentColNames.includes('is_resolved')) {
+      sqlite.exec(`ALTER TABLE comments ADD COLUMN is_resolved INTEGER NOT NULL DEFAULT 0`);
+      console.log('[migration] added comments.is_resolved');
+    }
+  } catch (err) {
+    console.error('[migration] comments new columns failed:', err);
   }
 
   // Seed default config

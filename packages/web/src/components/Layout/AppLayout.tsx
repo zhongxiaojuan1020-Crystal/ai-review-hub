@@ -91,8 +91,8 @@ const AppLayout: React.FC = () => {
             <div style={{ color: '#FFFFFF', fontSize: 15, fontWeight: 700, lineHeight: 1.25, letterSpacing: '-0.2px' }}>
               AI Sight
             </div>
-            <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 10, lineHeight: 1, marginTop: 1 }}>
-              Collect sparks, Guide strategies.
+            <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 10, lineHeight: 1.4, marginTop: 1 }}>
+              Collect sparks,<br />Guide strategies.
             </div>
           </div>
         </div>

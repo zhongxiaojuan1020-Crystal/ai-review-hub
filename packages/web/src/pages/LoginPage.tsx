@@ -63,8 +63,8 @@ const LoginPage: React.FC = () => {
           <div style={{ fontSize: 20, fontWeight: 700, color: '#1C1C1E', letterSpacing: '-0.3px' }}>
             AI Sight
           </div>
-          <div style={{ fontSize: 12, color: '#AEAEB2', marginTop: 4 }}>
-            请登录以继续
+          <div style={{ fontSize: 12, color: '#AEAEB2', marginTop: 4, textAlign: 'center' }}>
+            Collect sparks,<br />Guide strategies.
           </div>
         </div>
 
@@ -101,7 +101,7 @@ const LoginPage: React.FC = () => {
         </div>
 
         <div style={{ padding: '4px 20px 16px', textAlign: 'center' }}>
-          <Text style={{ fontSize: 11, color: '#C7C7CC' }}>AI Sight · 内部使用</Text>
+          <Text style={{ fontSize: 11, color: '#C7C7CC' }}>仅AI技术战略团队内部使用</Text>
         </div>
       </div>
     </div>

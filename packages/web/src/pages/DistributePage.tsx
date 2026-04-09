@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Card, Table, Tag, Button, Typography, Space, Tabs, message, Empty } from 'antd';
 import { SendOutlined, HistoryOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
+import ReviewDetailDrawer from '../components/ReviewDetailDrawer';
 
 const { Title, Text } = Typography;
 
@@ -11,7 +11,7 @@ const DistributePage: React.FC = () => {
   const [pending, setPending] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
+  const [drawerReviewId, setDrawerReviewId] = useState<string | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -54,7 +54,7 @@ const DistributePage: React.FC = () => {
     {
       title: '短评', key: 'info',
       render: (r: any) => (
-        <Text style={{ cursor: 'pointer', color: '#FF6A00' }} onClick={() => navigate(`/reviews/${r.id}`)}>
+        <Text style={{ cursor: 'pointer', color: '#FF6A00' }} onClick={() => setDrawerReviewId(r.id)}>
           {r.company}
         </Text>
       ),
@@ -99,19 +99,26 @@ const DistributePage: React.FC = () => {
       <Tabs items={[
         {
           key: 'pending',
-          label: <><CheckCircleOutlined /> 待分发 ({pending.length})</>,
+          label: <Space><CheckCircleOutlined /> 待分发 ({pending.length})</Space>,
           children: pending.length === 0 ? <Empty description="暂无待分发短评" /> : (
-            <Table dataSource={pending} columns={pendingColumns} rowKey="id" pagination={false} />
+            <Table dataSource={pending} columns={pendingColumns} rowKey="id" pagination={false} loading={loading} />
           ),
         },
         {
           key: 'history',
-          label: <><HistoryOutlined /> 历史记录 ({history.length})</>,
+          label: <Space><HistoryOutlined /> 历史记录 ({history.length})</Space>,
           children: history.length === 0 ? <Empty description="暂无分发记录" /> : (
-            <Table dataSource={history} columns={historyColumns} rowKey="id" pagination={false} />
+            <Table dataSource={history} columns={historyColumns} rowKey="id" pagination={false} loading={loading} />
           ),
         },
       ]} />
+
+      <ReviewDetailDrawer
+        reviewId={drawerReviewId}
+        open={!!drawerReviewId}
+        onClose={() => setDrawerReviewId(null)}
+        onChange={fetchData}
+      />
     </Card>
   );
 };

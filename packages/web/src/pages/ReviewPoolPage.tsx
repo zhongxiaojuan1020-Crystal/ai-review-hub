@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Tabs, Card, Tag, Typography, Space, Empty, Spin, Button, Badge, Avatar, Tooltip, message } from 'antd';
 import { FireOutlined, ClockCircleOutlined, CheckCircleOutlined, SendOutlined, UserOutlined, InboxOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { useAuthStore } from '../stores/authStore';
 import ArchiveDrawer from '../components/Archive/ArchiveDrawer';
 import StatsPanel from '../components/Archive/StatsPanel';
+import ReviewDetailDrawer from '../components/ReviewDetailDrawer';
 import { getTagColor } from '@ai-review/shared';
 import api from '../api/client';
 
@@ -132,7 +132,7 @@ const ReviewPoolPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('in_progress');
   const [archiveOpen, setArchiveOpen] = useState(false);
-  const navigate = useNavigate();
+  const [drawerReviewId, setDrawerReviewId] = useState<string | null>(null);
   const { user } = useAuthStore();
 
   const fetchReviews = async () => {
@@ -180,7 +180,18 @@ const ReviewPoolPage: React.FC = () => {
         全部短评
       </Button>
 
-      <ArchiveDrawer open={archiveOpen} onClose={() => setArchiveOpen(false)} />
+      <ArchiveDrawer
+        open={archiveOpen}
+        onClose={() => setArchiveOpen(false)}
+        onReviewClick={(id: string) => setDrawerReviewId(id)}
+      />
+
+      <ReviewDetailDrawer
+        reviewId={drawerReviewId}
+        open={!!drawerReviewId}
+        onClose={() => setDrawerReviewId(null)}
+        onChange={fetchReviews}
+      />
 
       <Tabs
         activeKey={tab}
@@ -198,7 +209,7 @@ const ReviewPoolPage: React.FC = () => {
             ) : (
               inProgress.map(r => (
                 <div key={r.id} style={{ position: 'relative' }}>
-                  <ReviewCard review={r} onClick={() => navigate(`/reviews/${r.id}`)} />
+                  <ReviewCard review={r} onClick={() => setDrawerReviewId(r.id)} />
                   {user?.role === 'supervisor' && r.status === 'in_progress' && (
                     <Button
                       size="small"
@@ -224,7 +235,7 @@ const ReviewPoolPage: React.FC = () => {
               <Empty description="暂无已完成的短评" />
             ) : (
               completed.map(r => (
-                <ReviewCard key={r.id} review={r} onClick={() => navigate(`/reviews/${r.id}`)} />
+                <ReviewCard key={r.id} review={r} onClick={() => setDrawerReviewId(r.id)} />
               ))
             ),
           },

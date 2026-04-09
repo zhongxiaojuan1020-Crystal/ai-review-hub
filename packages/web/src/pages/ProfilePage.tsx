@@ -6,10 +6,10 @@ import {
 import {
   UserOutlined, FileTextOutlined, StarOutlined, EditOutlined, LockOutlined, CameraOutlined,
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { useAuthStore } from '../stores/authStore';
 import api from '../api/client';
+import ReviewDetailDrawer from '../components/ReviewDetailDrawer';
 
 const { Title, Text } = Typography;
 
@@ -17,7 +17,7 @@ const ProfilePage: React.FC = () => {
   const { user, setUser } = useAuthStore();
   const [reviews, setReviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
+  const [drawerReviewId, setDrawerReviewId] = useState<string | null>(null);
 
   // Profile edit state
   const [editName, setEditName] = useState(false);
@@ -238,7 +238,7 @@ const ProfilePage: React.FC = () => {
             children: loading ? <Spin /> : myReviews.length === 0 ? <Empty description="暂无短评" /> : (
               myReviews.map(r => (
                 <Card key={r.id} size="small" hoverable style={{ marginBottom: 8 }}
-                  onClick={() => navigate(`/reviews/${r.id}`)}>
+                  onClick={() => setDrawerReviewId(r.id)}>
                   <Space>
                     <Text strong>{r.company}</Text>
                     <Tag>{r.status === 'completed' ? '已完成' : '评分中'}</Tag>
@@ -254,7 +254,7 @@ const ProfilePage: React.FC = () => {
             children: loading ? <Spin /> : myScoredReviews.length === 0 ? <Empty description="暂无评分" /> : (
               myScoredReviews.map(r => (
                 <Card key={r.id} size="small" hoverable style={{ marginBottom: 8 }}
-                  onClick={() => navigate(`/reviews/${r.id}`)}>
+                  onClick={() => setDrawerReviewId(r.id)}>
                   <Space>
                     <Text strong>{r.company}</Text>
                     <Text type="secondary">{r.author?.name}</Text>
@@ -297,6 +297,11 @@ const ProfilePage: React.FC = () => {
         </Space>
       </Modal>
 
+      <ReviewDetailDrawer
+        reviewId={drawerReviewId}
+        open={!!drawerReviewId}
+        onClose={() => setDrawerReviewId(null)}
+      />
     </div>
   );
 };

@@ -3,8 +3,7 @@ import {
   Drawer, Input, Select, Tag, Typography, Space, Badge, Empty,
   Avatar, Tooltip, Divider,
 } from 'antd';
-import { FireOutlined, SendOutlined, UserOutlined, ClockCircleOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { FireOutlined, UserOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { MAIN_DOMAINS, DOMAIN_COLOR, reviewDomainFromTags } from '@ai-review/shared';
 import api from '../../api/client';
@@ -17,15 +16,16 @@ const reviewDomain = (tags: string[]): string => reviewDomainFromTags(tags || []
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** Open the review detail drawer (from parent) instead of navigating. */
+  onReviewClick?: (id: string) => void;
 }
 
-const ArchiveDrawer: React.FC<Props> = ({ open, onClose }) => {
+const ArchiveDrawer: React.FC<Props> = ({ open, onClose, onReviewClick }) => {
   const [reviews, setReviews] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [filterDomain, setFilterDomain] = useState<string>('');
   const [filterAuthor, setFilterAuthor] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
-  const navigate = useNavigate();
 
   useEffect(() => {
     if (open) {
@@ -66,8 +66,7 @@ const ArchiveDrawer: React.FC<Props> = ({ open, onClose }) => {
   }, [filtered]);
 
   const handleClick = (id: string) => {
-    navigate(`/reviews/${id}`);
-    onClose();
+    onReviewClick?.(id);
   };
 
   return (

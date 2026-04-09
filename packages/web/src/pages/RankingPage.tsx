@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Tag, Typography, Space, Card, Empty, Spin, Button, Radio, DatePicker } from 'antd';
 import { FireOutlined, SendOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
 import dayjs, { Dayjs } from 'dayjs';
 import { useAuthStore } from '../stores/authStore';
 import DistributePreview from '../components/Distribution/DistributePreview';
+import ReviewDetailDrawer from '../components/ReviewDetailDrawer';
 import { getTagColor } from '@ai-review/shared';
 import api from '../api/client';
 
@@ -37,7 +37,7 @@ const RankingPage: React.FC = () => {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [selectedReviewId, setSelectedReviewId] = useState<string>('');
   const [distributing, setDistributing] = useState(false);
-  const navigate = useNavigate();
+  const [drawerReviewId, setDrawerReviewId] = useState<string | null>(null);
   const { user } = useAuthStore();
 
   useEffect(() => {
@@ -120,7 +120,7 @@ const RankingPage: React.FC = () => {
             <Card
               key={record.id}
               hoverable
-              onClick={() => navigate(`/reviews/${record.id}`)}
+              onClick={() => setDrawerReviewId(record.id)}
               style={{ marginBottom: 12, borderLeft: '4px solid #FF6A00', cursor: 'pointer' }}
               styles={{ body: { padding: '16px 20px' } }}
             >
@@ -237,6 +237,12 @@ const RankingPage: React.FC = () => {
           } catch { /* ignore */ }
           setDistributing(false);
         }}
+      />
+
+      <ReviewDetailDrawer
+        reviewId={drawerReviewId}
+        open={!!drawerReviewId}
+        onClose={() => setDrawerReviewId(null)}
       />
     </div>
   );

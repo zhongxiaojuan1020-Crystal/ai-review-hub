@@ -89,10 +89,10 @@ const AppLayout: React.FC = () => {
           <LogoMark />
           <div>
             <div style={{ color: '#FFFFFF', fontSize: 15, fontWeight: 700, lineHeight: 1.25, letterSpacing: '-0.2px' }}>
-              AI短评圈
+              AI Sight
             </div>
             <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 10, lineHeight: 1, marginTop: 1 }}>
-              AI Review Hub
+              Collect sparks, Guide strategies.
             </div>
           </div>
         </div>

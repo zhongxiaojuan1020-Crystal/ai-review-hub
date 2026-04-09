@@ -115,40 +115,82 @@ export async function sendPublishNotification(params: {
 }
 
 /**
+ * Convert an HTML string to a plain-text / DingTalk-Markdown representation.
+ * DingTalk actionCard.text accepts a limited markdown subset.
+ */
+function htmlToMarkdown(html: string): string {
+  if (!html) return '';
+  // Headings
+  let md = html
+    .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '\n### $1\n')
+    .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '\n### $1\n')
+    .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '\n**$1**\n')
+    // Bold
+    .replace(/<(strong|b)[^>]*>(.*?)<\/\1>/gi, '**$2**')
+    // Italic
+    .replace(/<(em|i)[^>]*>(.*?)<\/\1>/gi, '*$2*')
+    // Underline (no md equivalent — just strip tag)
+    .replace(/<u[^>]*>(.*?)<\/u>/gi, '$1')
+    // Lists
+    .replace(/<li[^>]*>(.*?)<\/li>/gi, '\n• $1')
+    .replace(/<\/(ul|ol)>/gi, '\n')
+    // Images — include as markdown image if URL is http (skip base64)
+    .replace(/<img[^>]+src="(https?:[^"]+)"[^>]*\/?>/gi, '\n![]($1)\n')
+    .replace(/<img[^>]+src="data:[^"]*"[^>]*\/?>/gi, '') // strip base64
+    // Line breaks & paragraphs
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    // Strip remaining tags
+    .replace(/<[^>]+>/g, '')
+    // Decode HTML entities
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    // Collapse excessive blank lines
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return md;
+}
+
+/**
  * Send a DingTalk webhook message when a review is distributed.
  * Uses the guest link so external viewers can access without login.
+ * Sends the author's original body content (converted to markdown).
  */
 export async function sendDistributeNotification(params: {
   reviewTitle: string;
   authorName?: string;
-  description: string;
-  opinions: string[];
+  body?: string;         // new rich-text body (HTML)
+  description?: string;  // legacy fallback
   tags: string[];
   heatScore: number | null;
   guestUrl: string;
 }): Promise<{ ok: boolean; errcode?: number; errmsg?: string; reason?: string }> {
-  const opinionLines = params.opinions.map((o, i) => `${i + 1}. ${o}`).join('\n');
+  const byline = params.authorName ? `*by ${params.authorName}*` : '';
   const heatLine = params.heatScore != null
-    ? `🔥 综合热度 **${params.heatScore.toFixed(2)}**\n`
+    ? `\n🔥 综合热度 **${params.heatScore.toFixed(1)} / 5**`
     : '';
-  const byline = params.authorName ? `by ${params.authorName}` : '';
+
+  // Prefer rich body; fall back to plain description
+  const bodyMarkdown = params.body
+    ? htmlToMarkdown(params.body)
+    : (params.description || '').slice(0, 500);
 
   const payload = {
     msgtype: 'actionCard',
     actionCard: {
-      // Include the word "短评" in the title so any custom-keyword security setting on
-      // the DingTalk robot that is looking for "短评" will match.
-      title: `[短评] 新短评分发：${params.reviewTitle}`,
+      // "短评" keyword in title ensures DingTalk custom-keyword security passes.
+      title: `[短评] ${params.reviewTitle}`,
       text: [
-        `### 🚀 短评分发：${params.reviewTitle}`,
+        `### 【短评】${params.reviewTitle}`,
         byline,
         '',
-        params.description.slice(0, 120) + (params.description.length > 120 ? '…' : ''),
-        '',
-        opinionLines,
-        '',
+        bodyMarkdown,
         heatLine,
-      ].filter(Boolean).join('\n'),
+      ].filter(v => v !== undefined && v !== null).join('\n'),
       btnOrientation: '0',
       btns: [{ title: '查看全文', actionURL: params.guestUrl }],
     },

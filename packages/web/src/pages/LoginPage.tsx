@@ -61,7 +61,7 @@ const LoginPage: React.FC = () => {
             <LogoMark />
           </div>
           <div style={{ fontSize: 20, fontWeight: 700, color: '#1C1C1E', letterSpacing: '-0.3px' }}>
-            AI短评圈
+            AI Sight
           </div>
           <div style={{ fontSize: 12, color: '#AEAEB2', marginTop: 4 }}>
             请登录以继续
@@ -101,7 +101,7 @@ const LoginPage: React.FC = () => {
         </div>
 
         <div style={{ padding: '4px 20px 16px', textAlign: 'center' }}>
-          <Text style={{ fontSize: 11, color: '#C7C7CC' }}>AI Review Hub · 内部使用</Text>
+          <Text style={{ fontSize: 11, color: '#C7C7CC' }}>AI Sight · 内部使用</Text>
         </div>
       </div>
     </div>

@@ -1,15 +1,63 @@
-/* AI短评圈 — Global flat/Apple style overrides */
+/* AI Sight — Global flat/Apple style overrides */
 
 *, *::before, *::after {
   box-sizing: border-box;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-family: 'Microsoft YaHei', '微软雅黑', -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif !important;
 }
 
 body {
   margin: 0;
   background: #F2F2F7;
-  color: #1C1C1E;
+  color: #000000;
+  font-family: 'Microsoft YaHei', '微软雅黑', -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif !important;
+  font-size: 12px !important;
+}
+
+/* Rich text reading view */
+.rich-body {
+  font-family: 'Microsoft YaHei', '微软雅黑', -apple-system, sans-serif !important;
+  font-size: 12px;
+  color: #000;
+  line-height: 1.9;
+}
+.rich-body h1 { font-size: 16px; font-weight: 700; margin: 12px 0 6px; }
+.rich-body h2 { font-size: 14px; font-weight: 700; margin: 10px 0 4px; }
+.rich-body h3 { font-size: 12px; font-weight: 700; margin: 8px 0 4px; }
+.rich-body p  { margin: 4px 0; }
+.rich-body img { max-width: 100%; border-radius: 6px; margin: 8px 0; display: block; }
+.rich-body ul, .rich-body ol { padding-left: 20px; margin: 4px 0; }
+.rich-body li { margin: 2px 0; }
+/* Two-column layout support */
+.rich-body .col-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 8px 0;
+}
+
+/* Rich editor canvas (editing mode) */
+.rich-editor-canvas {
+  font-family: 'Microsoft YaHei', '微软雅黑', -apple-system, sans-serif !important;
+  font-size: 12px;
+  color: #000;
+  line-height: 1.9;
+  outline: none;
+}
+.rich-editor-canvas h1 { font-size: 16px; font-weight: 700; }
+.rich-editor-canvas h2 { font-size: 14px; font-weight: 700; }
+.rich-editor-canvas h3 { font-size: 12px; font-weight: 700; }
+.rich-editor-canvas img { max-width: 100%; border-radius: 6px; cursor: pointer; }
+.rich-editor-canvas img.selected { outline: 2px solid #FF6A00; }
+.rich-editor-canvas .col-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 8px 0;
+  padding: 8px;
+  border: 1px dashed #FFD591;
+  border-radius: 4px;
 }
 
 /* Flatten Ant Design cards */

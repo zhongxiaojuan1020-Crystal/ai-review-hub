@@ -1,6 +1,6 @@
 import type { ThemeConfig } from 'antd';
 
-// AI短评圈 — Alibaba Orange + Apple flat design system
+// AI Sight — Alibaba Orange + Apple flat design system
 // Palette: #FF6900 (primary), #FF921B (warm), #F8D04C (accent), #1C1C1E (dark), #F2F2F7 (bg)
 export const theme: ThemeConfig = {
   token: {

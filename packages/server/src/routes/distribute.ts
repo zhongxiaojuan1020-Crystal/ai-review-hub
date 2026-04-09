@@ -70,8 +70,8 @@ export async function distributeRoutes(app: FastifyInstance) {
     const dtResult = await sendDistributeNotification({
       reviewTitle: review.company,
       authorName: author?.name || '',
+      body: review.body || undefined,
       description: typeof review.description === 'string' ? review.description : '',
-      opinions: (review.sections as any[]).map((s: any) => s.title).filter(Boolean),
       tags: (review.tags as string[]) || [],
       heatScore: review.heatScore,
       guestUrl,

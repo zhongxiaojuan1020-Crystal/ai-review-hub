@@ -5,8 +5,10 @@ import { NEW_SCORE_DIMENSIONS } from '@ai-review/shared';
 import dayjs from 'dayjs';
 import api from '../../api/client';
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 const { TextArea } = Input;
+
+const STAR_LABELS = ['', '一般', '不错', '很好'];
 
 interface Props {
   reviewId: string;
@@ -14,29 +16,40 @@ interface Props {
   onScoreSubmitted?: () => void;
 }
 
-/** 3-star row: 0 / 1 / 2 / 3 */
+/** Inline 3-star row — hover shows label tooltip above each star */
 const StarRow: React.FC<{ value: number; onChange: (v: number) => void }> = ({ value, onChange }) => {
   const [hovered, setHovered] = useState(0);
+  const active = hovered || value;
 
   return (
-    <Space size={6}>
-      {[1, 2, 3].map(n => {
-        const filled = n <= (hovered || value);
-        return (
-          <span
-            key={n}
-            onClick={() => onChange(value === n ? 0 : n)}
-            onMouseEnter={() => setHovered(n)}
-            onMouseLeave={() => setHovered(0)}
-            style={{ cursor: 'pointer', fontSize: 26, color: filled ? '#FF6A00' : '#d9d9d9', lineHeight: 1 }}
-          >
-            {filled ? <StarFilled /> : <StarOutlined />}
+    <Space size={10} align="center">
+      {[1, 2, 3].map(n => (
+        <div
+          key={n}
+          style={{ position: 'relative', display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}
+          onMouseEnter={() => setHovered(n)}
+          onMouseLeave={() => setHovered(0)}
+          onClick={() => onChange(value === n ? 0 : n)}
+        >
+          <span style={{ cursor: 'pointer', fontSize: 28, color: n <= active ? '#FF6A00' : '#d9d9d9', lineHeight: 1 }}>
+            {n <= active ? <StarFilled /> : <StarOutlined />}
           </span>
-        );
-      })}
-      <Text type="secondary" style={{ fontSize: 13, marginLeft: 4 }}>
-        {value === 0 ? '—' : value === 1 ? '一般' : value === 2 ? '不错' : '很好'}
-      </Text>
+          {hovered === n && (
+            <span style={{
+              position: 'absolute', bottom: '110%', left: '50%', transform: 'translateX(-50%)',
+              background: 'rgba(0,0,0,0.6)', color: '#fff', borderRadius: 4,
+              padding: '2px 6px', fontSize: 11, whiteSpace: 'nowrap', pointerEvents: 'none',
+            }}>
+              {STAR_LABELS[n]}
+            </span>
+          )}
+        </div>
+      ))}
+      {value > 0 && (
+        <Text type="secondary" style={{ fontSize: 12, color: '#bfbfbf' }}>
+          {STAR_LABELS[value]}
+        </Text>
+      )}
     </Space>
   );
 };
@@ -114,36 +127,31 @@ const ScoringPanel: React.FC<Props> = ({ reviewId, isAuthor, onScoreSubmitted })
       size="small"
       style={{ borderColor: '#FFD591' }}
       extra={hasExisting && scoredAt && (
-        <Text type="secondary" style={{ fontSize: 11 }}>
-          {dayjs(scoredAt).format('MM/DD HH:mm')}
-        </Text>
+        <Text type="secondary" style={{ fontSize: 11 }}>{dayjs(scoredAt).format('MM/DD HH:mm')}</Text>
       )}
     >
-      <Space direction="vertical" style={{ width: '100%' }} size={18}>
+      <Space direction="vertical" style={{ width: '100%' }} size={16}>
         {NEW_SCORE_DIMENSIONS.map(dim => (
           <div key={dim.key}>
-            <div style={{ marginBottom: 6 }}>
-              <Text strong style={{ fontSize: 14 }}>{dim.label}</Text>
-              <Text type="secondary" italic style={{ display: 'block', fontSize: 12, color: '#9a9a9a', lineHeight: 1.5, marginTop: 2 }}>
-                {dim.description}
-              </Text>
+            {/* Label + stars on the same line */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 3 }}>
+              <Text strong style={{ fontSize: 13, minWidth: 48 }}>{dim.label}</Text>
+              <StarRow
+                value={dim.key === 'quality_score' ? qualityScore : importanceScore}
+                onChange={dim.key === 'quality_score' ? setQualityScore : setImportanceScore}
+              />
             </div>
-            <StarRow
-              value={dim.key === 'quality_score' ? qualityScore : importanceScore}
-              onChange={dim.key === 'quality_score' ? setQualityScore : setImportanceScore}
-            />
+            <Text type="secondary" italic style={{ fontSize: 11, color: '#bfbfbf', lineHeight: 1.5, display: 'block', paddingLeft: 60 }}>
+              {dim.description}
+            </Text>
           </div>
         ))}
 
-        {/* Revision request toggle */}
-        <div style={{ borderTop: '1px dashed #FFD591', paddingTop: 14 }}>
+        {/* Revision request */}
+        <div style={{ borderTop: '1px dashed #FFD591', paddingTop: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: needsRevision ? 10 : 0 }}>
-            <Switch
-              size="small"
-              checked={needsRevision}
-              onChange={setNeedsRevision}
-              style={needsRevision ? { background: '#FF6A00' } : {}}
-            />
+            <Switch size="small" checked={needsRevision} onChange={setNeedsRevision}
+              style={needsRevision ? { background: '#FF6A00' } : {}} />
             <Text style={{ fontSize: 13 }}>短评需要修改</Text>
           </div>
           {needsRevision && (
@@ -157,13 +165,7 @@ const ScoringPanel: React.FC<Props> = ({ reviewId, isAuthor, onScoreSubmitted })
           )}
         </div>
 
-        <Button
-          type="primary"
-          block
-          loading={loading}
-          onClick={handleSubmit}
-          style={{ marginTop: 4 }}
-        >
+        <Button type="primary" block loading={loading} onClick={handleSubmit}>
           {hasExisting ? '更新评分' : '提交评分'}
         </Button>
       </Space>

@@ -400,8 +400,6 @@ interface Props {
   reviews: ReviewLike[];
 }
 
-const CHART_H = 200;
-
 const StatsPanel: React.FC<Props> = ({ reviews }) => {
   const [mode, setMode] = useState<PeriodMode>('week');
   const [customRange, setCustomRange] = useState<[Dayjs, Dayjs] | null>(null);
@@ -445,61 +443,75 @@ const StatsPanel: React.FC<Props> = ({ reviews }) => {
     <div
       style={{
         marginBottom: 12,
-        padding: '10px 14px',
-        background: '#FFFAF0',
-        border: '1px solid #FFE7BA',
-        borderRadius: 8,
+        padding: '8px 14px 10px',
+        background: 'rgba(255, 252, 248, 0.52)',
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
+        border: '1px solid rgba(212, 191, 152, 0.45)',
+        borderRadius: 6,
       }}
     >
       {/* Header row */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: mode === 'custom' ? 8 : 10,
-        }}
-      >
-        <Text style={{ fontSize: 12, color: '#888' }}>
-          领域分布 · <Text style={{ color: '#FF6A00', fontWeight: 600 }}>{total}</Text> 篇
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <Text style={{ fontSize: 11, color: '#8C7A5E' }}>
+          领域分布 · <Text style={{ color: '#FF6900', fontWeight: 600 }}>{total}</Text> 篇
         </Text>
-        <Radio.Group
-          size="small"
-          value={mode}
-          onChange={e => setMode(e.target.value as PeriodMode)}
-          buttonStyle="solid"
-          optionType="button"
-          options={[
-            { label: '本周', value: 'week' },
-            { label: '本月', value: 'month' },
-            { label: '自定义', value: 'custom' },
-          ]}
-        />
-      </div>
-
-      {/* Custom range picker */}
-      {mode === 'custom' && (
-        <div style={{ marginBottom: 10 }}>
-          <RangePicker
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {mode === 'custom' && (
+            <RangePicker
+              size="small"
+              style={{ width: 200 }}
+              value={customRange}
+              onChange={val => {
+                if (val && val[0] && val[1]) {
+                  setCustomRange([val[0].startOf('day'), val[1].endOf('day')]);
+                } else {
+                  setCustomRange(null);
+                }
+              }}
+              allowClear
+            />
+          )}
+          <Radio.Group
             size="small"
-            style={{ width: '100%' }}
-            value={customRange}
-            onChange={val => {
-              if (val && val[0] && val[1]) {
-                setCustomRange([val[0].startOf('day'), val[1].endOf('day')]);
-              } else {
-                setCustomRange(null);
-              }
-            }}
-            allowClear
+            value={mode}
+            onChange={e => setMode(e.target.value as PeriodMode)}
+            buttonStyle="solid"
+            optionType="button"
+            options={[
+              { label: '本周', value: 'week' },
+              { label: '本月', value: 'month' },
+              { label: '自定义', value: 'custom' },
+            ]}
           />
         </div>
-      )}
+      </div>
 
+      {/* Domain bar list */}
       {total === 0 ? (
-        <Text type="secondary" style={{ fontSize: 12 }}>暂无数据</Text>
+        <Text type="secondary" style={{ fontSize: 11 }}>暂无数据</Text>
       ) : (
-        <MekkoChart data={domainBreakdown} height={CHART_H} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {domainBreakdown.map(({ domain, count, percent }, i) => (
+            <div key={domain} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, color: '#6B5540', minWidth: 60, flexShrink: 0 }}>
+                {domain}
+              </span>
+              <div style={{ flex: 1, height: 5, background: 'rgba(212,191,152,0.35)', borderRadius: 3, overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
+                  width: `${percent}%`,
+                  background: i === 0 ? '#FF6900' : i === 1 ? '#FF8233' : i === 2 ? '#FF9D5C' : '#FFB880',
+                  borderRadius: 3,
+                  transition: 'width 0.4s ease',
+                }} />
+              </div>
+              <span style={{ fontSize: 11, color: '#A8906C', flexShrink: 0, minWidth: 52, textAlign: 'right' }}>
+                {count}篇 · {percent.toFixed(0)}%
+              </span>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

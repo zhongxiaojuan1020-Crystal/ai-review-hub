@@ -54,7 +54,7 @@ const ReviewCard: React.FC<{ review: any; onClick: () => void }> = ({ review, on
       style={{
         marginBottom: 16,
         borderLeft: '4px solid #FF6900',
-        background: '#FDFAF2',
+        background: '#FDFCF8',
       }}
       styles={{ body: { padding: '16px 20px' } }}
     >

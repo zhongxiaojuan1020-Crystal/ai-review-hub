@@ -12,8 +12,8 @@ export const theme: ThemeConfig = {
     borderRadiusLG: 4,
     borderRadiusSM: 2,
     // ── Paper palette ──────────────────────────────────────
-    colorBgContainer: '#FDFAF2',       // warm off-white (card surface)
-    colorBgLayout: '#EDE0C4',          // aged paper background
+    colorBgContainer: '#FDFCF8',       // near-white card surface
+    colorBgLayout: '#EDE8DC',          // low-sat parchment background
     colorBorder: '#D4BF98',            // antique border
     colorBorderSecondary: '#E8D9BE',
     colorText: '#2A1A08',              // warm espresso text
@@ -37,7 +37,7 @@ export const theme: ThemeConfig = {
     Layout: {
       siderBg: '#1A0E05',             // espresso book-spine brown
       headerBg: '#FDFAF2',
-      bodyBg: '#EDE0C4',
+      bodyBg: '#EDE8DC',
     },
     Menu: {
       darkItemBg: '#1A0E05',

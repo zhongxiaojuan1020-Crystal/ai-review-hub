@@ -166,42 +166,128 @@ const MekkoChart: React.FC<MekkoChartProps> = ({ data, height }) => {
 
 // ─── Word cloud (brain shape) ─────────────────────────────────────────────────
 
+const STOP_WORDS = new Set([
+  '的','了','是','在','和','与','也','这','那','有','为','等','对','中','上','下',
+  '不','人','个','年','月','日','一','来','到','从','以','但','因','而','其','已',
+  '将','可','于','被','或','时','如','所','则','都','使','通过','进行','可以','没有',
+  '需要','他们','我们','这个','这些','那些','什么','如何','已经','非常','主要','包括',
+  '发布','提供','支持','能够','目前','未来','实现','方面','相关','短评','目前','全面',
+  'that','this','with','have','from','they','been','will','would','could','should',
+  'more','also','into','their','about','which','when','then','than','some','such',
+  'each','many','most','other','very','just','like','make','made','said','your',
+  'model','models','using','used','user','users','open','based','data','large',
+]);
+
 function extractKeywords(reviews: ReviewLike[]): Array<{ text: string; value: number }> {
   const freq = new Map<string, number>();
-  const stopWords = new Set([
-    '的','了','是','在','和','与','也','这','那','有','为','等','对','中','上','下',
-    '不','人','个','年','月','日','一','来','到','从','以','但','因','而','其','已',
-    '将','可','于','被','或','时','如','所','则','都','使','通过','进行','可以','没有',
-    '需要','他们','我们','这个','这些','那些','什么','如何','已经','非常','主要','包括',
-    'that','this','with','have','from','they','been','will','would','could','should',
-    'more','also','into','their','about','which','when','then','than','some','such',
-    'each','many','most','other','very','just','like','make','made','said',
-  ]);
   reviews.forEach(r => {
-    const body = (r.body || '') + ' ' + (r.description || '');
-    const text = body.replace(/<[^>]+>/g, ' ').replace(/&[^;]+;/g, ' ');
-    const zh = text.match(/[\u4e00-\u9fa5]{2,6}/g) || [];
-    const en = text.match(/[a-zA-Z]{4,}/g) || [];
+    // Include title (company field), body, and description
+    const raw = [
+      (r as any).company || '',
+      r.body || '',
+      r.description || '',
+    ].join(' ');
+    const text = raw.replace(/<[^>]+>/g, ' ').replace(/&[^;]+;/g, ' ').replace(/【[^】]+】/g, ' ');
+    // Chinese: 2-5 chars
+    const zh = text.match(/[\u4e00-\u9fa5]{2,5}/g) || [];
+    // English: 3+ chars
+    const en = text.match(/[a-zA-Z]{3,}/g) || [];
+    const enSet = new Set(en);
     [...zh, ...en].forEach(w => {
-      if (!stopWords.has(w) && !stopWords.has(w.toLowerCase())) {
-        freq.set(w, (freq.get(w) || 0) + 1);
+      const key = enSet.has(w) ? w.toLowerCase() : w;
+      if (!STOP_WORDS.has(w) && !STOP_WORDS.has(key) && key.length >= 2) {
+        freq.set(key, (freq.get(key) || 0) + 1);
       }
     });
   });
   return Array.from(freq.entries())
     .map(([text, value]) => ({ text, value }))
     .sort((a, b) => b.value - a.value)
-    .slice(0, 80);
+    .slice(0, 120);
 }
 
-const CANVAS_W = 360;
-const CANVAS_H = 210;
+// Logical canvas dimensions
+const CANVAS_W = 420;
+const CANVAS_H = 240;
+
+/**
+ * Draw the two-lobe brain silhouette (dorsal view) on ctx.
+ * W/H are the logical canvas dimensions.
+ */
+function traceBrainPath(ctx: CanvasRenderingContext2D, W: number, H: number) {
+  const p = (nx: number, ny: number): [number, number] => [nx * W, ny * H];
+  ctx.beginPath();
+
+  // ── top-center dip (interhemispheric fissure, front) ──
+  ctx.moveTo(...p(0.500, 0.068));
+
+  // ── left hemisphere ───────────────────────────────────
+  // frontal pole
+  ctx.bezierCurveTo(...p(0.390, 0.018), ...p(0.190, 0.026), ...p(0.090, 0.145));
+  // frontal gyrus bump
+  ctx.bezierCurveTo(...p(0.040, 0.210), ...p(0.015, 0.310), ...p(0.025, 0.410));
+  // parietal
+  ctx.bezierCurveTo(...p(0.010, 0.490), ...p(0.020, 0.580), ...p(0.070, 0.660));
+  // parieto-occipital
+  ctx.bezierCurveTo(...p(0.030, 0.730), ...p(0.070, 0.840), ...p(0.160, 0.900));
+  // occipital pole
+  ctx.bezierCurveTo(...p(0.255, 0.958), ...p(0.375, 0.970), ...p(0.462, 0.928));
+  // bottom-center dip (interhemispheric fissure, rear)
+  ctx.bezierCurveTo(...p(0.488, 0.970), ...p(0.512, 0.970), ...p(0.538, 0.928));
+
+  // ── right hemisphere ──────────────────────────────────
+  // occipital pole
+  ctx.bezierCurveTo(...p(0.625, 0.970), ...p(0.745, 0.958), ...p(0.840, 0.900));
+  // parieto-occipital
+  ctx.bezierCurveTo(...p(0.930, 0.840), ...p(0.970, 0.730), ...p(0.930, 0.660));
+  // parietal
+  ctx.bezierCurveTo(...p(0.980, 0.580), ...p(0.990, 0.490), ...p(0.975, 0.410));
+  // frontal gyrus bump
+  ctx.bezierCurveTo(...p(0.985, 0.310), ...p(0.960, 0.210), ...p(0.910, 0.145));
+  // frontal pole back to top-center
+  ctx.bezierCurveTo(...p(0.810, 0.026), ...p(0.610, 0.018), ...p(0.500, 0.068));
+  ctx.closePath();
+}
+
+/** Build a pixel-level mask for fast in-brain checks. */
+function buildBrainMask(W: number, H: number): Uint8ClampedArray {
+  const offscreen = document.createElement('canvas');
+  offscreen.width = W;
+  offscreen.height = H;
+  const mctx = offscreen.getContext('2d')!;
+  traceBrainPath(mctx, W, H);
+  mctx.fillStyle = '#fff';
+  mctx.fill();
+  return mctx.getImageData(0, 0, W, H).data;
+}
+
+/** Check whether a word bounding-box (cx,cy centre) is fully inside the brain mask. */
+function wordFitsInBrain(
+  mask: Uint8ClampedArray, W: number, H: number,
+  cx: number, cy: number, tw: number, th: number,
+  pad = 4,
+): boolean {
+  const x0 = cx - tw / 2 - pad;
+  const y0 = cy - th / 2 - pad;
+  const x1 = cx + tw / 2 + pad;
+  const y1 = cy + th / 2 + pad;
+  // sample corners + midpoints of each edge
+  const pts: [number, number][] = [
+    [x0, y0], [x1, y0], [x0, y1], [x1, y1],
+    [(x0 + x1) / 2, y0], [(x0 + x1) / 2, y1],
+    [x0, (y0 + y1) / 2], [x1, (y0 + y1) / 2],
+  ];
+  for (const [px, py] of pts) {
+    const ix = Math.round(px), iy = Math.round(py);
+    if (ix < 0 || ix >= W || iy < 0 || iy >= H) return false;
+    // alpha channel of white fill → 255 means inside
+    if (mask[(iy * W + ix) * 4 + 3] < 128) return false;
+  }
+  return true;
+}
 
 interface WordEntry { text: string; value: number }
-
-interface WordCloudCanvasProps {
-  words: WordEntry[];
-}
+interface WordCloudCanvasProps { words: WordEntry[] }
 
 const WordCloudCanvas: React.FC<WordCloudCanvasProps> = ({ words }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -209,123 +295,89 @@ const WordCloudCanvas: React.FC<WordCloudCanvasProps> = ({ words }) => {
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = CANVAS_W * dpr;
-    canvas.height = CANVAS_H * dpr;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = CANVAS_W, H = CANVAS_H;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, W, H);
 
-    const W = CANVAS_W;
-    const H = CANVAS_H;
-
-    // Build brain path helper
-    const buildBrainPath = () => {
-      ctx.beginPath();
-      ctx.moveTo(W * 0.5, H * 0.1);
-      ctx.bezierCurveTo(W * 0.42, H * 0.03, W * 0.18, H * 0.04, W * 0.08, H * 0.22);
-      ctx.bezierCurveTo(W * 0.01, H * 0.38, W * 0.02, H * 0.62, W * 0.1, H * 0.76);
-      ctx.bezierCurveTo(W * 0.18, H * 0.91, W * 0.36, H * 0.95, W * 0.46, H * 0.9);
-      ctx.bezierCurveTo(W * 0.49, H * 0.96, W * 0.51, H * 0.96, W * 0.54, H * 0.9);
-      ctx.bezierCurveTo(W * 0.64, H * 0.95, W * 0.82, H * 0.91, W * 0.9, H * 0.76);
-      ctx.bezierCurveTo(W * 0.98, H * 0.62, W * 0.99, H * 0.38, W * 0.92, H * 0.22);
-      ctx.bezierCurveTo(W * 0.82, H * 0.04, W * 0.58, H * 0.03, W * 0.5, H * 0.1);
-      ctx.closePath();
-    };
-
-    // Draw background fill + stroke (before clip)
-    buildBrainPath();
-    ctx.fillStyle = 'rgba(255, 240, 224, 0.5)';
+    // 1 · Draw brain background (no stroke — just a very faint fill)
+    traceBrainPath(ctx, W, H);
+    ctx.fillStyle = 'rgba(255, 237, 218, 0.55)';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 105, 0, 0.15)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
 
-    // Clip to brain shape
+    if (words.length === 0) return;
+
+    // 2 · Build pixel mask at logical resolution for accurate boundary detection
+    const mask = buildBrainMask(W, H);
+
+    // 3 · Clip to brain so words at the edges are naturally trimmed
     ctx.save();
-    buildBrainPath();
+    traceBrainPath(ctx, W, H);
     ctx.clip();
 
-    if (words.length === 0) {
-      ctx.restore();
-      return;
-    }
+    const maxVal = words[0].value;
+    type Box = { x: number; y: number; w: number; h: number };
+    const placed: Box[] = [];
 
-    const maxValue = words[0].value;
-    const limit = Math.min(words.length, 60);
+    const maxR = Math.min(W, H) * 0.47;
 
-    type PlacedBox = { x: number; y: number; w: number; h: number };
-    const placed: PlacedBox[] = [];
-
-    for (let wi = 0; wi < limit; wi++) {
+    for (let wi = 0; wi < Math.min(words.length, 100); wi++) {
       const { text, value } = words[wi];
-      const t = value / maxValue;
-      const fontSize = Math.min(10 + t * 26, 36);
-      const fontWeight = value > maxValue * 0.4 ? 'bold' : 'normal';
-      const r2 = Math.round(212 - 107 * t);
-      const b2 = Math.round(184 - 184 * t);
-      const color = `rgb(255, ${r2}, ${b2})`;
+      const t = value / maxVal;                              // 1 = most frequent
+      const fontSize = Math.round(11 + t * 30);             // 11 – 41 px
+      const bold = t > 0.35;
+      // gradient: deep orange (#FF6900) → light peach (#FFDCBC)
+      const g = Math.round(105 + (220 - 105) * (1 - t));
+      const b = Math.round(0   + (188 -   0) * (1 - t));
+      const color = `rgb(255,${g},${b})`;
 
-      ctx.font = `${fontWeight} ${fontSize}px sans-serif`;
-      const tm = ctx.measureText(text);
-      const tw = tm.width;
-      const th = fontSize;
+      ctx.font = `${bold ? 700 : 400} ${fontSize}px "Microsoft YaHei",sans-serif`;
+      const tw = ctx.measureText(text).width;
+      const th = fontSize * 1.15;
 
-      let placed_flag = false;
-      const maxR = Math.min(W, H) * 0.46;
+      // phase offset per word index so consecutive words spread differently
+      const phase = wi * 1.618;   // golden-angle-ish
 
-      outerLoop:
-      for (let r = 0; r <= maxR; r += 3) {
-        const steps = r === 0 ? 1 : Math.max(8, Math.ceil(2 * Math.PI * r / 12));
-        for (let si = 0; si < steps; si++) {
-          const angle = (si / steps) * 2 * Math.PI + r * 0.4;
+      let placed_ = false;
+      outer:
+      for (let r = 0; r <= maxR && !placed_; r += 1.5) {
+        const circ = Math.max(1, 2 * Math.PI * r);
+        const steps = r < 2 ? 1 : Math.max(16, Math.ceil(circ / 7));
+        for (let si = 0; si < steps && !placed_; si++) {
+          const angle = (si / steps) * 2 * Math.PI + phase + r * 0.45;
           const cx = W / 2 + r * Math.cos(angle);
-          const cy = H / 2 + r * Math.sin(angle) * 0.73;
-          const x = cx - tw / 2;
-          const y = cy - th / 2;
+          const cy = H / 2 + r * Math.sin(angle) * 0.78;  // slight vertical squeeze
 
-          // Bounds check
-          if (x <= 5 || x + tw >= W - 5 || y <= 5 || y + th >= H - 5) continue;
+          if (!wordFitsInBrain(mask, W, H, cx, cy, tw, th)) continue;
 
-          // Approx brain shape check
-          const normX = (cx - W * 0.5) / (W * 0.43);
-          const normY = (cy - H * 0.52) / (H * 0.41);
-          if (normX * normX + normY * normY >= 0.92) continue;
-
-          // Overlap check
-          let overlaps = false;
+          // Overlap check (2 px gap)
+          const x0 = cx - tw / 2, y0 = cy - th / 2;
+          let hit = false;
           for (const pb of placed) {
-            if (
-              x - 3 < pb.x + pb.w &&
-              x + tw + 3 > pb.x &&
-              y - 3 < pb.y + pb.h &&
-              y + th + 3 > pb.y
-            ) {
-              overlaps = true;
-              break;
+            if (x0 - 2 < pb.x + pb.w && x0 + tw + 2 > pb.x &&
+                y0 - 2 < pb.y + pb.h && y0 + th + 2 > pb.y) {
+              hit = true; break;
             }
           }
-          if (overlaps) continue;
+          if (hit) continue;
 
-          // Place word
           ctx.fillStyle = color;
-          ctx.fillText(text, x, y + th * 0.85);
-          placed.push({ x, y, w: tw, h: th });
-          placed_flag = true;
-          break outerLoop;
+          ctx.fillText(text, x0, y0 + th * 0.82);
+          placed.push({ x: x0, y: y0, w: tw, h: th });
+          placed_ = true;
+          break outer;
         }
       }
-
-      // suppress unused variable warning
-      void placed_flag;
     }
 
     ctx.restore();
   }, [words]);
 
-  useEffect(() => {
-    draw();
-  }, [draw]);
+  useEffect(() => { draw(); }, [draw]);
 
   return (
     <canvas

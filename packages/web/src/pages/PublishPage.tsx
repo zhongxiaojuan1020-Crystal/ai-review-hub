@@ -14,6 +14,7 @@ import {
 import dayjs from 'dayjs';
 import api from '../api/client';
 import { useAuthStore } from '../stores/authStore';
+import RichEditor from '../components/RichEditor';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -336,18 +337,15 @@ const PublishPage: React.FC = () => {
           {/* ── 摘要 ── */}
           <Form.Item label={
             <span>
-              一句话摘要
-              <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>显示在卡片正文区域</Text>
+              事件摘要
+              <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>显示在卡片正文区域，可粘贴图片</Text>
             </span>
           }>
-            <TextArea
+            <RichEditor
               value={description}
-              onChange={e => setDescription(e.target.value)}
-              placeholder="用一两句话概括核心事件或核心观点..."
-              autoSize={{ minRows: 2, maxRows: 4 }}
-              maxLength={200}
-              showCount
-              style={{ background: '#FDFCF8' }}
+              onChange={setDescription}
+              placeholder="概括核心事件或背景，可直接粘贴截图..."
+              minHeight={100}
             />
           </Form.Item>
 
@@ -407,12 +405,11 @@ const PublishPage: React.FC = () => {
                     maxLength={40}
                     style={{ marginBottom: 6, fontWeight: 600, background: '#FDFCF8' }}
                   />
-                  <TextArea
+                  <RichEditor
                     value={sec.content}
-                    onChange={e => updateSection(i, 'content', e.target.value)}
-                    placeholder="详细说明（展开阅读时显示）..."
-                    autoSize={{ minRows: 2, maxRows: 6 }}
-                    style={{ fontSize: 12, background: '#FDFCF8' }}
+                    onChange={val => updateSection(i, 'content', val)}
+                    placeholder="详细说明（可粘贴截图、上传图片）..."
+                    minHeight={80}
                   />
                 </div>
 

@@ -76,6 +76,28 @@ export const guestTokens = sqliteTable('guest_tokens', {
   createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
 });
 
+export const drafts = sqliteTable('drafts', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  draftKey: text('draft_key').notNull(), // 'publish' | 'edit:{reviewId}'
+  company: text('company'),
+  body: text('body'),
+  tags: text('tags', { mode: 'json' }).$type<string[]>(),
+  sources: text('sources', { mode: 'json' }).$type<string[]>(),
+  savedAt: text('saved_at').notNull().$defaultFn(() => new Date().toISOString()),
+}, (table) => [
+  uniqueIndex('drafts_user_key_idx').on(table.userId, table.draftKey),
+]);
+
+export const favorites = sqliteTable('favorites', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  reviewId: text('review_id').notNull().references(() => reviews.id, { onDelete: 'cascade' }),
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+}, (table) => [
+  uniqueIndex('favorites_user_review_idx').on(table.userId, table.reviewId),
+]);
+
 export const config = sqliteTable('config', {
   key: text('key').primaryKey(),
   value: text('value', { mode: 'json' }).notNull(),

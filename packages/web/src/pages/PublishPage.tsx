@@ -1,17 +1,26 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Card, Form, Input, Button, Select, Typography, Space, message, Divider,
-  Modal, Radio, Tag as AntTag, Collapse,
+  Modal, Radio, Tag as AntTag, Collapse, Tooltip,
 } from 'antd';
-import { PlusOutlined, MinusCircleOutlined, ThunderboltOutlined, LoadingOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined, MinusCircleOutlined, ThunderboltOutlined, LoadingOutlined,
+  EyeOutlined, IdcardOutlined, SaveOutlined,
+} from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   L1_TAGS, L2_TAGS, MAIN_DOMAINS, getTagColor, type TagDef,
 } from '@ai-review/shared';
+import dayjs from 'dayjs';
 import api from '../api/client';
 import RichEditor from '../components/RichEditor';
+import HtmlRenderer from '../components/HtmlRenderer';
+import ReviewCard from '../components/Review/ReviewCard';
+import { useAuthStore } from '../stores/authStore';
 
 const { Title, Text } = Typography;
+
+const AUTO_SAVE_INTERVAL = 30_000; // 30 seconds
 
 const PublishPage: React.FC = () => {
   const [form] = Form.useForm();
@@ -19,6 +28,7 @@ const PublishPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('edit');
   const navigate = useNavigate();
+  const { user } = useAuthStore();
 
   const [body, setBody] = useState('');
   const [customTags, setCustomTags] = useState<TagDef[]>([]);
@@ -36,23 +46,68 @@ const PublishPage: React.FC = () => {
   const [newTagLabel, setNewTagLabel] = useState('');
   const [newTagSubmitting, setNewTagSubmitting] = useState(false);
 
+  // Preview modals
+  const [articlePreviewOpen, setArticlePreviewOpen] = useState(false);
+  const [cardPreviewOpen, setCardPreviewOpen] = useState(false);
+
+  // Auto-save state
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [saving, setSaving] = useState(false);
+  const dirtyRef = useRef(false);
+  const draftKey = editId ? `edit:${editId}` : 'publish';
+
+  // Mark dirty whenever content changes
+  useEffect(() => { dirtyRef.current = true; }, [body, selectedTags]);
+
+  const saveDraft = useCallback(async (silent = true) => {
+    if (!dirtyRef.current) return;
+    const company = form.getFieldValue('company');
+    const sources = form.getFieldValue('sources');
+    if (!company && !body) return; // nothing to save
+    setSaving(true);
+    try {
+      await api.put(`/api/drafts/${draftKey}`, {
+        company,
+        body,
+        tags: selectedTags,
+        sources: (sources || []).filter((s: string) => s?.trim()),
+      });
+      dirtyRef.current = false;
+      setLastSaved(new Date());
+      if (!silent) message.success('草稿已保存');
+    } catch {
+      if (!silent) message.error('草稿保存失败');
+    }
+    setSaving(false);
+  }, [body, selectedTags, draftKey, form]);
+
+  // Auto-save interval
+  useEffect(() => {
+    const timer = setInterval(() => saveDraft(true), AUTO_SAVE_INTERVAL);
+    return () => clearInterval(timer);
+  }, [saveDraft]);
+
+  // Save on page unload
+  useEffect(() => {
+    const handler = () => { if (dirtyRef.current) saveDraft(true); };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [saveDraft]);
+
   useEffect(() => {
     api.get('/api/tags').then(res => {
       setCustomTags(res.data.customTags || []);
     }).catch(() => {});
   }, []);
 
+  // Load existing review (edit mode)
   useEffect(() => {
     if (editId) {
       api.get(`/api/reviews/${editId}`).then(res => {
         const r = res.data;
         const company = r.company.startsWith('【短评】') ? r.company : `【短评】${r.company}`;
-        form.setFieldsValue({
-          company,
-          sources: r.sources?.length > 0 ? r.sources : [''],
-        });
+        form.setFieldsValue({ company, sources: r.sources?.length > 0 ? r.sources : [''] });
         setSelectedTags(r.tags || []);
-        // Prefer new-style body; fall back to migrating old sections → HTML
         if (r.body) {
           setBody(r.body);
         } else if (Array.isArray(r.sections) && r.sections.length > 0) {
@@ -72,46 +127,59 @@ const PublishPage: React.FC = () => {
     }
   }, [editId]);
 
+  // Restore draft on mount (only for new reviews, not edits)
+  useEffect(() => {
+    if (editId) return;
+    api.get(`/api/drafts/${draftKey}`).then(res => {
+      if (res.status === 204 || !res.data) return;
+      const draft = res.data;
+      if (!draft.company && !draft.body) return;
+      Modal.confirm({
+        title: '发现未完成草稿',
+        content: `上次编辑于 ${dayjs(draft.savedAt).format('MM/DD HH:mm')}，是否恢复？`,
+        okText: '恢复草稿',
+        cancelText: '丢弃',
+        onOk: () => {
+          if (draft.company) form.setFieldValue('company', draft.company);
+          if (draft.body) setBody(draft.body);
+          if (Array.isArray(draft.tags)) setSelectedTags(draft.tags);
+          if (Array.isArray(draft.sources) && draft.sources.length > 0) {
+            form.setFieldValue('sources', draft.sources);
+          }
+          message.success('草稿已恢复');
+        },
+        onCancel: () => {
+          api.delete(`/api/drafts/${draftKey}`).catch(() => {});
+        },
+      });
+    }).catch(() => {});
+  }, [draftKey, editId]);
+
   // Options for the right-hand tag dropdown, filtered by level
   const tagPickerOptions = useMemo(() => {
     if (pickerLevel === 'L1') {
-      const l1 = [
-        ...L1_TAGS,
-        ...customTags.filter(t => t.level === 'L1'),
-      ];
+      const l1 = [...L1_TAGS, ...customTags.filter(t => t.level === 'L1')];
       return l1.map(t => ({ label: t.label, value: t.label }));
     }
-    // L2: group by parent domain for readability
     const allL2 = [...L2_TAGS, ...customTags.filter(t => t.level === 'L2')];
     const allL1Custom = customTags.filter(t => t.level === 'L1').map(t => t.label);
     const domains = [...MAIN_DOMAINS, ...allL1Custom];
     return domains
-      .map(d => ({
-        label: d,
-        options: allL2
-          .filter(t => t.parent === d)
-          .map(t => ({ label: t.label, value: t.label })),
-      }))
+      .map(d => ({ label: d, options: allL2.filter(t => t.parent === d).map(t => ({ label: t.label, value: t.label })) }))
       .filter(g => g.options.length > 0);
   }, [pickerLevel, customTags]);
 
   const toggleTag = (label: string) => {
-    setSelectedTags(prev =>
-      prev.includes(label) ? prev.filter(t => t !== label) : [...prev, label]
-    );
+    setSelectedTags(prev => prev.includes(label) ? prev.filter(t => t !== label) : [...prev, label]);
   };
 
   const handleAddCustomTag = async () => {
     const label = newTagLabel.trim();
-    if (!label) {
-      message.warning('请输入标签');
-      return;
-    }
+    if (!label) { message.warning('请输入标签'); return; }
     setNewTagSubmitting(true);
     try {
       const res = await api.post('/api/tags', {
-        label,
-        level: newTagLevel,
+        label, level: newTagLevel,
         parent: newTagLevel === 'L2' ? newTagParent : undefined,
       });
       setCustomTags(res.data.customTags || []);
@@ -134,13 +202,8 @@ const PublishPage: React.FC = () => {
     try {
       const res = await api.post('/api/ai/format', { rawText: aiRawText });
       const { title, body: aiBody, suggestedTags } = res.data;
-
-      if (title) {
-        form.setFieldValue('company', `【短评】${title}`);
-      }
-      if (aiBody) {
-        setBody(aiBody);
-      }
+      if (title) form.setFieldValue('company', `【短评】${title}`);
+      if (aiBody) setBody(aiBody);
       if (Array.isArray(suggestedTags) && suggestedTags.length > 0) {
         setSelectedTags(suggestedTags);
         message.success(`AI 已生成内容，推荐标签：${suggestedTags.join('、')}`);
@@ -148,59 +211,109 @@ const PublishPage: React.FC = () => {
         message.success('AI 排版完成，请检查并微调内容');
       }
     } catch (err: any) {
-      const msg = err?.response?.data?.error || 'AI 生成失败，请检查 ANTHROPIC_API_KEY 是否配置';
-      message.error(msg);
+      message.error(err?.response?.data?.error || 'AI 生成失败，请检查 API Key 配置');
     }
     setAiLoading(false);
   };
 
   const handleSubmit = async (values: any) => {
     if (!body.trim() || body === '<br>' || body === '<p><br></p>') {
-      message.warning('请输入短评内容');
-      return;
+      message.warning('请输入短评内容'); return;
     }
     if (selectedTags.length === 0) {
-      message.warning('请至少选择一个标签');
-      return;
+      message.warning('请至少选择一个标签'); return;
     }
-
     setLoading(true);
     try {
-      // Derive a short description from the first text block of body
       const tmp = document.createElement('div');
       tmp.innerHTML = body;
       const firstLine = (tmp.textContent || '').trim().slice(0, 120);
-
       const payload = {
         company: values.company,
         description: firstLine,
         body,
-        sections: [], // new editor stores content in body
+        sections: [],
         tags: selectedTags,
         sources: (values.sources || []).filter((s: string) => s?.trim()),
       };
-
       if (editId) {
         await api.put(`/api/reviews/${editId}`, payload);
         message.success('短评已更新');
-        navigate(`/reviews/${editId}`);
       } else {
         const res = await api.post('/api/reviews', payload);
         message.success('短评发布成功');
         navigate(`/reviews/${res.data.id}`);
       }
+      // Clear draft after successful publish
+      api.delete(`/api/drafts/${draftKey}`).catch(() => {});
+      if (editId) navigate(`/reviews/${editId}`);
     } catch (err: any) {
       message.error(err.response?.data?.error || '操作失败');
     }
     setLoading(false);
   };
 
+  // Preview card mock
+  const previewReview = {
+    id: '_preview',
+    company: form.getFieldValue('company') || '【短评】标题预览',
+    body,
+    description: '',
+    sections: [],
+    tags: selectedTags,
+    status: 'completed',
+    distributed: false,
+    heatScore: 9.5,
+    hasUnresolvedRevision: false,
+    createdAt: new Date().toISOString(),
+    author: { name: user?.name || '作者', avatarUrl: user?.avatarUrl },
+    scoringProgress: { scorers: [] },
+  };
+
   return (
     <div style={{ maxWidth: 860, margin: '0 auto' }}>
       <Card>
-        <Title level={4} style={{ color: '#FF6900' }}>
-          {editId ? '编辑短评' : '发布短评'}
-        </Title>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <Title level={4} style={{ color: '#FF6900', margin: 0 }}>
+            {editId ? '编辑短评' : '发布短评'}
+          </Title>
+          <Space size={8}>
+            {lastSaved && (
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                <SaveOutlined style={{ marginRight: 4 }} />
+                {saving ? '保存中...' : `已保存 ${dayjs(lastSaved).format('HH:mm:ss')}`}
+              </Text>
+            )}
+            <Tooltip title="手动保存草稿">
+              <Button
+                size="small"
+                icon={<SaveOutlined />}
+                loading={saving}
+                onClick={() => saveDraft(false)}
+              >
+                保存草稿
+              </Button>
+            </Tooltip>
+            <Tooltip title="预览文章全文">
+              <Button
+                size="small"
+                icon={<EyeOutlined />}
+                onClick={() => setArticlePreviewOpen(true)}
+              >
+                全文预览
+              </Button>
+            </Tooltip>
+            <Tooltip title="预览短评卡片样式">
+              <Button
+                size="small"
+                icon={<IdcardOutlined />}
+                onClick={() => setCardPreviewOpen(true)}
+              >
+                卡片预览
+              </Button>
+            </Tooltip>
+          </Space>
+        </div>
 
         {/* ── AI 排版助手 ─────────────────────────────────────── */}
         <Collapse
@@ -256,11 +369,8 @@ const PublishPage: React.FC = () => {
             label="主标题（目标公司 / 事件）"
             rules={[{ required: true, message: '请输入目标公司或事件' }]}
             getValueFromEvent={(e) => {
-              // Ensure 【短评】 prefix is always present
               const raw: string = e.target.value;
-              if (!raw.startsWith('【短评】')) {
-                return '【短评】' + raw.replace(/^【短评】*/, '');
-              }
+              if (!raw.startsWith('【短评】')) return '【短评】' + raw.replace(/^【短评】*/, '');
               return raw;
             }}
           >
@@ -273,7 +383,6 @@ const PublishPage: React.FC = () => {
 
           <Divider />
 
-          {/* Compact tag picker: level dropdown + tag multi-select */}
           <Form.Item label="标签" required>
             <Space.Compact style={{ width: '100%' }}>
               <Select
@@ -290,12 +399,10 @@ const PublishPage: React.FC = () => {
                 style={{ flex: 1 }}
                 placeholder=""
                 value={selectedTags.filter(t => {
-                  // Show only the subset matching the current level in the input
                   const def = [...L1_TAGS, ...L2_TAGS, ...customTags].find(d => d.label === t);
                   return def ? def.level === pickerLevel : pickerLevel === 'L2';
                 })}
                 onChange={(vals: string[]) => {
-                  // Merge: keep selected tags from the *other* level, replace this level
                   const otherLevel = selectedTags.filter(t => {
                     const def = [...L1_TAGS, ...L2_TAGS, ...customTags].find(d => d.label === t);
                     const lvl = def ? def.level : 'L2';
@@ -308,24 +415,14 @@ const PublishPage: React.FC = () => {
                   const { label, value, closable, onClose } = props;
                   const c = getTagColor(value as string, customTags);
                   return (
-                    <AntTag
-                      closable={closable}
-                      onClose={onClose}
-                      style={{
-                        marginInlineEnd: 4,
-                        background: c.bg,
-                        color: c.text,
-                        borderColor: c.border,
-                      }}
-                    >
+                    <AntTag closable={closable} onClose={onClose}
+                      style={{ marginInlineEnd: 4, background: c.bg, color: c.text, borderColor: c.border }}>
                       {label}
                     </AntTag>
                   );
                 }}
               />
-              <Button icon={<PlusOutlined />} onClick={() => setTagModalOpen(true)}>
-                自定义
-              </Button>
+              <Button icon={<PlusOutlined />} onClick={() => setTagModalOpen(true)}>自定义</Button>
             </Space.Compact>
             {selectedTags.length > 0 && (
               <div style={{ marginTop: 8 }}>
@@ -334,12 +431,8 @@ const PublishPage: React.FC = () => {
                   {selectedTags.map(t => {
                     const c = getTagColor(t, customTags);
                     return (
-                      <AntTag
-                        key={t}
-                        closable
-                        onClose={() => toggleTag(t)}
-                        style={{ background: c.bg, color: c.text, borderColor: c.border }}
-                      >
+                      <AntTag key={t} closable onClose={() => toggleTag(t)}
+                        style={{ background: c.bg, color: c.text, borderColor: c.border }}>
                         {t}
                       </AntTag>
                     );
@@ -355,7 +448,7 @@ const PublishPage: React.FC = () => {
                 <Text strong>参考来源（选填）</Text>
                 {fields.map(({ key, name, ...rest }) => (
                   <Space key={key} style={{ display: 'flex', marginTop: 8 }} align="start">
-                    <Form.Item {...rest} name={name} style={{ marginBottom: 0, flex: 1, minWidth: 400 }}>
+                    <Form.Item {...rest} name={name} style={{ marginBottom: 0, flex: 1, minWidth: 0, width: '100%' }}>
                       <Input />
                     </Form.Item>
                     {fields.length > 1 && (
@@ -371,7 +464,7 @@ const PublishPage: React.FC = () => {
           </Form.List>
 
           <Form.Item style={{ marginTop: 32 }}>
-            <Space>
+            <Space wrap>
               <Button type="primary" htmlType="submit" loading={loading} size="large">
                 {editId ? '更新短评' : '发布短评'}
               </Button>
@@ -381,7 +474,37 @@ const PublishPage: React.FC = () => {
         </Form>
       </Card>
 
-      {/* Add custom tag modal */}
+      {/* ── Article preview modal ─────────────────────────────────── */}
+      <Modal
+        open={articlePreviewOpen}
+        title="全文预览"
+        onCancel={() => setArticlePreviewOpen(false)}
+        footer={null}
+        width={720}
+        styles={{ body: { maxHeight: '75vh', overflowY: 'auto', padding: '24px 32px' } }}
+      >
+        <div style={{ marginBottom: 12 }}>
+          <Text strong style={{ fontSize: 18 }}>{form.getFieldValue('company') || '（无标题）'}</Text>
+        </div>
+        {body ? <HtmlRenderer html={body} /> : <Text type="secondary">（正文为空）</Text>}
+      </Modal>
+
+      {/* ── Card preview modal ────────────────────────────────────── */}
+      <Modal
+        open={cardPreviewOpen}
+        title="卡片预览"
+        onCancel={() => setCardPreviewOpen(false)}
+        footer={null}
+        width={600}
+        styles={{ body: { padding: '24px 20px' } }}
+      >
+        <Text type="secondary" style={{ display: 'block', fontSize: 11, marginBottom: 12 }}>
+          这是短评在短评池中显示的卡片样式
+        </Text>
+        <ReviewCard review={previewReview} onClick={() => {}} />
+      </Modal>
+
+      {/* ── Custom tag modal ──────────────────────────────────────── */}
       <Modal
         open={tagModalOpen}
         title="新增自定义标签"

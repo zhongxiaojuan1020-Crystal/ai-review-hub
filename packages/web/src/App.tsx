@@ -4,6 +4,7 @@ import { ConfigProvider, Spin } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { theme } from './styles/theme';
 import { useAuthStore } from './stores/authStore';
+import { useFavoritesStore } from './stores/favoritesStore';
 import AppLayout from './components/Layout/AppLayout';
 import LoginPage from './pages/LoginPage';
 import ReviewPoolPage from './pages/ReviewPoolPage';
@@ -14,6 +15,7 @@ import DistributePage from './pages/DistributePage';
 import SettingsPage from './pages/SettingsPage';
 import ProfilePage from './pages/ProfilePage';
 import GuestViewPage from './pages/GuestViewPage';
+import FavoritesPage from './pages/FavoritesPage';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { token, loading } = useAuthStore();
@@ -23,9 +25,11 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 };
 
 const App: React.FC = () => {
-  const { fetchMe } = useAuthStore();
+  const { fetchMe, token } = useAuthStore();
+  const { hydrate } = useFavoritesStore();
 
   useEffect(() => { fetchMe(); }, []);
+  useEffect(() => { if (token) hydrate(); }, [token]);
 
   return (
     <ConfigProvider theme={theme} locale={zhCN}>
@@ -42,6 +46,7 @@ const App: React.FC = () => {
             <Route path="distribute" element={<DistributePage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="profile" element={<ProfilePage />} />
+            <Route path="favorites" element={<FavoritesPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

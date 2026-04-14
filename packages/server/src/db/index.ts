@@ -150,6 +150,42 @@ function runMigrations(sqlite: InstanceType<typeof Database>) {
     console.error('[migration] comments new columns failed:', err);
   }
 
+  // drafts table
+  try {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS drafts (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        draft_key TEXT NOT NULL,
+        company TEXT,
+        body TEXT,
+        tags TEXT DEFAULT '[]',
+        sources TEXT DEFAULT '[]',
+        saved_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(user_id, draft_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_drafts_user_id ON drafts(user_id);
+    `);
+  } catch (err) {
+    console.error('[migration] drafts table failed:', err);
+  }
+
+  // favorites table
+  try {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS favorites (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(user_id, review_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id);
+    `);
+  } catch (err) {
+    console.error('[migration] favorites table failed:', err);
+  }
+
   // Seed default config
   const insertConfig = sqlite.prepare(
     `INSERT OR IGNORE INTO config (key, value, updated_at) VALUES (?, ?, datetime('now'))`

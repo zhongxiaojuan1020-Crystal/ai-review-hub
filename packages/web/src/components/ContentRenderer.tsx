@@ -1,9 +1,29 @@
 import React from 'react';
 
 /**
- * Renders text content preserving line breaks and inline images.
- * Images are embedded in text as [[IMG:base64data]] markers.
- * Falls back to rendering legacy images[] array at the end if no markers found.
+ * Strip `<script>` tags & on* event-handler attributes (defence-in-depth).
+ */
+function sanitize(html: string): string {
+  return (html || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/\son\w+="[^"]*"/gi, '')
+    .replace(/\son\w+='[^']*'/gi, '');
+}
+
+/**
+ * Detect whether a string contains HTML markup (vs plain text).
+ * Matches common tags produced by the RichEditor.
+ */
+function isHtml(text: string): boolean {
+  return /<(?:p|br|ul|ol|li|img|h[1-6]|div|span|strong|em|b|i|u|a|blockquote|table)\b/i.test(text);
+}
+
+/**
+ * Renders review content — intelligently handles both:
+ * 1. **HTML content** (new RichEditor): rendered via dangerouslySetInnerHTML
+ * 2. **Plain-text content** (legacy): preserves line breaks + [[IMG:...]] markers
+ *
+ * Also renders legacy `images[]` array if no inline markers found.
  */
 export function ContentRenderer({
   content,
@@ -14,6 +34,25 @@ export function ContentRenderer({
   legacyImages?: string[];
   style?: React.CSSProperties;
 }) {
+  if (!content) return null;
+
+  // ── HTML content from RichEditor ──────────────────────────────
+  if (isHtml(content)) {
+    return (
+      <div
+        className="rich-body"
+        style={{
+          fontSize: 14,
+          lineHeight: 1.9,
+          color: '#333',
+          ...style,
+        }}
+        dangerouslySetInnerHTML={{ __html: sanitize(content) }}
+      />
+    );
+  }
+
+  // ── Legacy plain-text with optional [[IMG:...]] markers ───────
   const parts = content.split(/(\[\[IMG:[^\]]*?\]\])/);
   const hasInlineImages = parts.some(p => p.startsWith('[[IMG:'));
 

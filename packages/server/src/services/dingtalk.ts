@@ -158,41 +158,79 @@ function htmlToMarkdown(html: string): string {
 /**
  * Send a DingTalk webhook message when a review is distributed.
  * Uses the guest link so external viewers can access without login.
- * Sends the author's original body content (converted to markdown).
+ *
+ * The message reproduces the full card layout: title, author, description,
+ * numbered section viewpoints, tags, and heat score — matching the web card style.
  */
 export async function sendDistributeNotification(params: {
   reviewTitle: string;
   authorName?: string;
   body?: string;         // new rich-text body (HTML)
-  description?: string;  // legacy fallback
+  description?: string;  // legacy / structured description (HTML or plain)
+  sections?: { title: string; content: string }[];
   tags: string[];
   heatScore: number | null;
   guestUrl: string;
 }): Promise<{ ok: boolean; errcode?: number; errmsg?: string; reason?: string }> {
-  const byline = params.authorName ? `*by ${params.authorName}*` : '';
-  const heatLine = params.heatScore != null
-    ? `\n🔥 综合热度 **${params.heatScore.toFixed(1)} / 5**`
-    : '';
+  const lines: string[] = [];
 
-  // Prefer rich body; fall back to plain description
-  const bodyMarkdown = params.body
-    ? htmlToMarkdown(params.body)
-    : (params.description || '').slice(0, 500);
+  // ── Title ───────────────────────────────────────────────────
+  lines.push(`### 【短评】${params.reviewTitle}`);
+  if (params.authorName) lines.push(`*by ${params.authorName}*`);
+  lines.push('');
+
+  // ── Body content ────────────────────────────────────────────
+  if (params.body) {
+    // New rich-text (word-like editor) — convert to markdown
+    lines.push(htmlToMarkdown(params.body));
+  } else {
+    // Structured editor: description + sections
+    const descMd = params.description
+      ? htmlToMarkdown(params.description)
+      : '';
+    if (descMd) {
+      lines.push('**事件描述**');
+      lines.push('');
+      lines.push(descMd);
+      lines.push('');
+    }
+
+    // Numbered viewpoints (matching the card's numbered circles)
+    if (params.sections && params.sections.length > 0) {
+      lines.push('---');
+      lines.push('');
+      params.sections.forEach((sec, i) => {
+        const titleMd = htmlToMarkdown(sec.title || '').trim();
+        const contentMd = htmlToMarkdown(sec.content || '').trim();
+        lines.push(`**${i + 1}. ${titleMd}**`);
+        if (contentMd) {
+          lines.push('');
+          lines.push(contentMd);
+        }
+        lines.push('');
+      });
+    }
+  }
+
+  // ── Tags ────────────────────────────────────────────────────
+  if (params.tags && params.tags.length > 0) {
+    lines.push(params.tags.map(t => `#${t}`).join('  '));
+    lines.push('');
+  }
+
+  // ── Heat score ──────────────────────────────────────────────
+  if (params.heatScore != null) {
+    lines.push(`🔥 综合热度 **${params.heatScore.toFixed(2)} / 5**`);
+  }
 
   const payload = {
     msgtype: 'actionCard',
     actionCard: {
       // "短评" keyword in title ensures DingTalk custom-keyword security passes.
       title: `[短评] ${params.reviewTitle}`,
-      text: [
-        `### 【短评】${params.reviewTitle}`,
-        byline,
-        '',
-        bodyMarkdown,
-        heatLine,
-      ].filter(v => v !== undefined && v !== null).join('\n'),
+      text: lines.join('\n'),
       btnOrientation: '0',
-      btns: [{ title: '查看全文', actionURL: params.guestUrl }],
+      btns: [{ title: '阅读全文', actionURL: params.guestUrl }],
     },
   };
   return await postToDingTalk(payload);

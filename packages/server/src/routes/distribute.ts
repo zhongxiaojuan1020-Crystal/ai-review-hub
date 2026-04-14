@@ -72,6 +72,7 @@ export async function distributeRoutes(app: FastifyInstance) {
       authorName: author?.name || '',
       body: review.body || undefined,
       description: typeof review.description === 'string' ? review.description : '',
+      sections: (review.sections as any[]) || [],
       tags: (review.tags as string[]) || [],
       heatScore: review.heatScore,
       guestUrl,

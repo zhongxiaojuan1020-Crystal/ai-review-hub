@@ -4,8 +4,7 @@ import { nanoid } from 'nanoid';
 import { getDb } from '../db/index.js';
 import { reviews, users, scores, comments } from '../db/schema.js';
 import { AUTO_COMPLETE_HOURS } from '@ai-review/shared';
-import { getConfig } from '../config.js';
-import { sendPublishNotification } from '../services/dingtalk.js';
+
 
 function buildScoringProgress(allUsers: any[], review: any, reviewScores: any[]) {
   const eligibleScorers = allUsers.filter(u => u.id !== review.authorId);
@@ -107,15 +106,6 @@ export async function reviewRoutes(app: FastifyInstance) {
       tags: body.tags || [],
       sources: body.sources || [],
     }).run();
-
-    // Async DingTalk notification — don't await so response is fast
-    const { baseUrl } = getConfig();
-    sendPublishNotification({
-      authorName: userName,
-      reviewTitle: body.company,
-      reviewId: id,
-      appBaseUrl: baseUrl,
-    });
 
     return { id };
   });

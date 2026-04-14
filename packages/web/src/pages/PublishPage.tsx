@@ -14,7 +14,7 @@ import {
 import dayjs from 'dayjs';
 import api from '../api/client';
 import { useAuthStore } from '../stores/authStore';
-import RichEditor from '../components/RichEditor';
+import RichEditor, { sanitizeHtml } from '../components/RichEditor';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -135,9 +135,20 @@ const PublishPage: React.FC = () => {
           if (draft.body) {
             try {
               const parsed = JSON.parse(draft.body);
-              if (parsed.description) setDescription(parsed.description);
-              if (Array.isArray(parsed.sections) && parsed.sections.length > 0) setSections(parsed.sections);
-            } catch { /* old plain-text draft, ignore */ }
+              // Sanitize HTML on restore to strip any garbage from previous pastes
+              if (parsed.description) setDescription(sanitizeHtml(parsed.description));
+              if (Array.isArray(parsed.sections) && parsed.sections.length > 0) {
+                setSections(parsed.sections.map((s: Section) => ({
+                  title: s.title || '',
+                  content: sanitizeHtml(s.content || ''),
+                })));
+              }
+            } catch {
+              // Old plain-text or corrupted draft — just discard the body
+              api.delete(`/api/drafts/${draftKey}`).catch(() => {});
+              message.warning('旧格式草稿已丢弃，请重新编辑');
+              return;
+            }
           }
           message.success('草稿已恢复');
         },
@@ -401,8 +412,7 @@ const PublishPage: React.FC = () => {
                   <Input
                     value={sec.title}
                     onChange={e => updateSection(i, 'title', e.target.value)}
-                    placeholder={`观点标题 ${i + 1}（15字以内，显示为卡片要点）`}
-                    maxLength={40}
+                    placeholder={`观点标题 ${i + 1}（显示为卡片要点）`}
                     style={{ marginBottom: 6, fontWeight: 600, background: '#FDFCF8' }}
                   />
                   <RichEditor

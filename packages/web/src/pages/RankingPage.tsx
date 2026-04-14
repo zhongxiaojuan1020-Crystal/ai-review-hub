@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Tag, Typography, Space, Card, Empty, Spin, Button, Radio, DatePicker } from 'antd';
-import { FireOutlined, SendOutlined } from '@ant-design/icons';
+import { Tag, Typography, Space, Card, Empty, Spin, Button, Radio, DatePicker, Tooltip } from 'antd';
+import { FireOutlined, SendOutlined, StarOutlined, StarFilled } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useAuthStore } from '../stores/authStore';
+import { useFavoritesStore } from '../stores/favoritesStore';
 import DistributePreview from '../components/Distribution/DistributePreview';
 import ReviewDetailDrawer from '../components/ReviewDetailDrawer';
 import { getTagColor } from '@ai-review/shared';
+import { plainTextFromHtml } from '../components/Review/ReviewCard';
 import api from '../api/client';
 
 const { Text, Title, Paragraph } = Typography;
@@ -39,8 +41,10 @@ const RankingPage: React.FC = () => {
   const [distributing, setDistributing] = useState(false);
   const [drawerReviewId, setDrawerReviewId] = useState<string | null>(null);
   const { user } = useAuthStore();
+  const { isFavorited, toggle, hydrate } = useFavoritesStore();
 
   useEffect(() => {
+    hydrate();
     api.get('/api/ranking').then(res => {
       setAllRanking(res.data);
       setLoading(false);
@@ -149,12 +153,26 @@ const RankingPage: React.FC = () => {
                   </Space>
                 </div>
 
-                {/* Heat score */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                {/* Heat score + bookmark */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                   <FireOutlined style={{ color: '#FF6A00', fontSize: 14 }} />
                   <Text style={{ color: '#FF6A00', fontSize: 22, fontWeight: 700, lineHeight: 1 }}>
                     {record.heatScore?.toFixed(2) || '-'}
                   </Text>
+                  <Tooltip title={isFavorited(record.id) ? '取消收藏' : '收藏'}>
+                    <span
+                      onClick={(e) => { e.stopPropagation(); toggle(record.id); }}
+                      style={{
+                        cursor: 'pointer',
+                        color: isFavorited(record.id) ? '#FF6900' : '#bbb',
+                        fontSize: 17,
+                        lineHeight: 1,
+                        transition: 'color 0.2s',
+                      }}
+                    >
+                      {isFavorited(record.id) ? <StarFilled /> : <StarOutlined />}
+                    </span>
+                  </Tooltip>
                 </div>
               </div>
 
@@ -164,7 +182,7 @@ const RankingPage: React.FC = () => {
                   ellipsis={{ rows: 1 }}
                   style={{ color: '#888', fontSize: 13, marginBottom: 10, lineHeight: 1.6 }}
                 >
-                  {record.description}
+                  {plainTextFromHtml(record.description || '')}
                 </Paragraph>
 
                 {/* Row 3: section titles */}

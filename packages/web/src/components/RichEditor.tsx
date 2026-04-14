@@ -251,6 +251,28 @@ const RichEditor: React.FC<RichEditorProps> = ({
           onInput={handleInput}
           onBlur={handleInput}
           onClick={handleEditorClick}
+          onPaste={(e) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (let i = 0; i < items.length; i++) {
+              if (items[i].type.startsWith('image/')) {
+                e.preventDefault();
+                const file = items[i].getAsFile();
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const base64 = reader.result as string;
+                  editorRef.current?.focus();
+                  document.execCommand('insertHTML', false,
+                    `<img src="${base64}" style="width:100%;max-width:100%;border-radius:6px;margin:8px 0;" />`
+                  );
+                  handleInput();
+                };
+                reader.readAsDataURL(file);
+                return;
+              }
+            }
+          }}
           style={{ minHeight, padding: '16px', outline: 'none' }}
         />
       </div>

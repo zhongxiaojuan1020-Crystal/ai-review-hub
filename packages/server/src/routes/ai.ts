@@ -64,7 +64,15 @@ export async function aiRoutes(app: FastifyInstance) {
       if (!anthropicRes.ok) {
         const errText = await anthropicRes.text();
         console.error('[AI] API error:', anthropicRes.status, errText);
-        return reply.status(502).send({ error: `AI 服务返回错误 ${anthropicRes.status}` });
+        // Show the actual Anthropic error detail so we can diagnose
+        let detail = '';
+        try {
+          const errJson = JSON.parse(errText);
+          detail = errJson?.error?.message || errText.slice(0, 200);
+        } catch {
+          detail = errText.slice(0, 200);
+        }
+        return reply.status(502).send({ error: `AI 服务返回错误 ${anthropicRes.status}: ${detail}` });
       }
 
       const data = await anthropicRes.json() as any;

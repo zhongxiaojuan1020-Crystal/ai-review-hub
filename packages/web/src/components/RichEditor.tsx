@@ -108,6 +108,13 @@ const RichEditor: React.FC<RichEditorProps> = ({
     }
   }, [value]);
 
+  // Dismiss overlay on scroll (fixed overlay would drift otherwise)
+  useEffect(() => {
+    const dismiss = () => { setSelImg(null); setOverlay(null); };
+    window.addEventListener('scroll', dismiss, true);
+    return () => window.removeEventListener('scroll', dismiss, true);
+  }, []);
+
   const emit = () => {
     if (!editorRef.current) return;
     const html = editorRef.current.innerHTML;
@@ -157,11 +164,9 @@ const RichEditor: React.FC<RichEditorProps> = ({
   // ── Image drag-resize ─────────────────────────────────────────
 
   const calcOverlay = (img: HTMLImageElement) => {
-    const wrap = wrapRef.current;
-    if (!wrap) return null;
-    const wr = wrap.getBoundingClientRect();
     const ir = img.getBoundingClientRect();
-    return { top: ir.top - wr.top, left: ir.left - wr.left, width: ir.width, height: ir.height };
+    // Use fixed (viewport) coordinates so overlay is never clipped by overflow:hidden parents
+    return { top: ir.top, left: ir.left, width: ir.width, height: ir.height };
   };
 
   const handleEditorClick = (e: React.MouseEvent) => {
@@ -322,14 +327,14 @@ const RichEditor: React.FC<RichEditorProps> = ({
           style={{ minHeight, padding: '16px', outline: 'none' }}
         />
 
-        {/* Drag-resize overlay (shown when an image is selected) */}
+        {/* Drag-resize overlay — fixed so it's never clipped by overflow:hidden */}
         {overlay && selImg && (
           <div style={{
-            position: 'absolute',
+            position: 'fixed',
             top: overlay.top, left: overlay.left,
             width: overlay.width, height: overlay.height,
             border: '2px solid #FF6900', borderRadius: 3,
-            pointerEvents: 'none', zIndex: 10,
+            pointerEvents: 'none', zIndex: 9999,
           }}>
             {/* Decorative corner dots */}
             {[{t:-4,l:-4},{t:-4,r:-4},{b:-4,l:-4}].map((pos,i) => (

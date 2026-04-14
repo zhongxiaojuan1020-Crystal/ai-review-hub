@@ -15,6 +15,7 @@ import dayjs from 'dayjs';
 import api from '../api/client';
 import { useAuthStore } from '../stores/authStore';
 import RichEditor, { sanitizeHtml } from '../components/RichEditor';
+import { plainTextFromHtml } from '../components/Review/ReviewCard';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -548,8 +549,12 @@ const PublishPage: React.FC = () => {
           boxShadow: '2px 3px 0 #C8AE80',
         }}>
           <Text strong style={{ fontSize: 15 }}>{company}</Text>
-          <p style={{ color: '#888', fontSize: 13, margin: '8px 0 10px', lineHeight: 1.6 }}>
-            {description || '（摘要为空）'}
+          <p style={{
+            color: '#888', fontSize: 13, margin: '8px 0 10px', lineHeight: 1.6,
+            overflow: 'hidden', display: '-webkit-box',
+            WebkitLineClamp: 3, WebkitBoxOrient: 'vertical',
+          }}>
+            {plainTextFromHtml(description) || '（摘要为空）'}
           </p>
           {validSections.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
@@ -563,7 +568,7 @@ const PublishPage: React.FC = () => {
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                   }}>{i + 1}</span>
                   <Text style={{ fontSize: 13, color: '#333', lineHeight: 1.5 }}>
-                    {sec.title || '（无标题）'}
+                    {plainTextFromHtml(sec.title) || '（无标题）'}
                   </Text>
                 </div>
               ))}

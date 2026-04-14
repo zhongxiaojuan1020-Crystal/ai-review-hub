@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import {
   PlusOutlined, MinusCircleOutlined, ThunderboltOutlined, LoadingOutlined,
-  EyeOutlined, IdcardOutlined, SaveOutlined,
+  EyeOutlined, IdcardOutlined, SaveOutlined, DragOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -13,14 +13,17 @@ import {
 } from '@ai-review/shared';
 import dayjs from 'dayjs';
 import api from '../api/client';
-import RichEditor from '../components/RichEditor';
-import HtmlRenderer from '../components/HtmlRenderer';
-import ReviewCard from '../components/Review/ReviewCard';
 import { useAuthStore } from '../stores/authStore';
 
 const { Title, Text } = Typography;
+const { TextArea } = Input;
 
-const AUTO_SAVE_INTERVAL = 30_000; // 30 seconds
+const AUTO_SAVE_INTERVAL = 30_000;
+
+interface Section {
+  title: string;
+  content: string;
+}
 
 const PublishPage: React.FC = () => {
   const [form] = Form.useForm();
@@ -30,13 +33,11 @@ const PublishPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
 
-  const [body, setBody] = useState('');
+  // Structured fields
+  const [description, setDescription] = useState('');
+  const [sections, setSections] = useState<Section[]>([{ title: '', content: '' }]);
   const [customTags, setCustomTags] = useState<TagDef[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-
-  // AI assistant state
-  const [aiRawText, setAiRawText] = useState('');
-  const [aiLoading, setAiLoading] = useState(false);
   const [pickerLevel, setPickerLevel] = useState<'L1' | 'L2'>('L1');
 
   // Custom tag modal
@@ -47,28 +48,30 @@ const PublishPage: React.FC = () => {
   const [newTagSubmitting, setNewTagSubmitting] = useState(false);
 
   // Preview modals
-  const [articlePreviewOpen, setArticlePreviewOpen] = useState(false);
-  const [cardPreviewOpen, setCardPreviewOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
-  // Auto-save state
+  // AI assistant
+  const [aiRawText, setAiRawText] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+
+  // Auto-save
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [saving, setSaving] = useState(false);
   const dirtyRef = useRef(false);
   const draftKey = editId ? `edit:${editId}` : 'publish';
 
-  // Mark dirty whenever content changes
-  useEffect(() => { dirtyRef.current = true; }, [body, selectedTags]);
+  useEffect(() => { dirtyRef.current = true; }, [description, sections, selectedTags]);
 
   const saveDraft = useCallback(async (silent = true) => {
     if (!dirtyRef.current) return;
     const company = form.getFieldValue('company');
     const sources = form.getFieldValue('sources');
-    if (!company && !body) return; // nothing to save
+    if (!company && !description && sections.every(s => !s.title && !s.content)) return;
     setSaving(true);
     try {
       await api.put(`/api/drafts/${draftKey}`, {
         company,
-        body,
+        body: JSON.stringify({ description, sections }), // store structured as JSON in body field
         tags: selectedTags,
         sources: (sources || []).filter((s: string) => s?.trim()),
       });
@@ -79,15 +82,13 @@ const PublishPage: React.FC = () => {
       if (!silent) message.error('草稿保存失败');
     }
     setSaving(false);
-  }, [body, selectedTags, draftKey, form]);
+  }, [description, sections, selectedTags, draftKey, form]);
 
-  // Auto-save interval
   useEffect(() => {
     const timer = setInterval(() => saveDraft(true), AUTO_SAVE_INTERVAL);
     return () => clearInterval(timer);
   }, [saveDraft]);
 
-  // Save on page unload
   useEffect(() => {
     const handler = () => { if (dirtyRef.current) saveDraft(true); };
     window.addEventListener('beforeunload', handler);
@@ -95,39 +96,25 @@ const PublishPage: React.FC = () => {
   }, [saveDraft]);
 
   useEffect(() => {
-    api.get('/api/tags').then(res => {
-      setCustomTags(res.data.customTags || []);
-    }).catch(() => {});
+    api.get('/api/tags').then(res => setCustomTags(res.data.customTags || [])).catch(() => {});
   }, []);
 
-  // Load existing review (edit mode)
+  // Load existing review for editing
   useEffect(() => {
-    if (editId) {
-      api.get(`/api/reviews/${editId}`).then(res => {
-        const r = res.data;
-        const company = r.company.startsWith('【短评】') ? r.company : `【短评】${r.company}`;
-        form.setFieldsValue({ company, sources: r.sources?.length > 0 ? r.sources : [''] });
-        setSelectedTags(r.tags || []);
-        if (r.body) {
-          setBody(r.body);
-        } else if (Array.isArray(r.sections) && r.sections.length > 0) {
-          const migrated = (r.sections as any[]).map((s: any) => {
-            const title = s.title ? `<h3>${s.title}</h3>` : '';
-            const content = (s.content || '')
-              .replace(/\[\[IMG:([^\]]+)\]\]/g, '<img src="$1" style="max-width:100%;border-radius:6px;margin:8px 0;" />')
-              .split('\n').map((line: string) => `<p>${line}</p>`).join('');
-            return title + content;
-          }).join('');
-          const desc = r.description ? `<p>${r.description}</p>` : '';
-          setBody(desc + migrated);
-        } else if (r.description) {
-          setBody(`<p>${r.description}</p>`);
-        }
-      }).catch(() => message.error('加载短评失败'));
-    }
+    if (!editId) return;
+    api.get(`/api/reviews/${editId}`).then(res => {
+      const r = res.data;
+      const company = r.company.startsWith('【短评】') ? r.company : `【短评】${r.company}`;
+      form.setFieldsValue({ company, sources: r.sources?.length > 0 ? r.sources : [''] });
+      setSelectedTags(r.tags || []);
+      setDescription(r.description || '');
+      if (Array.isArray(r.sections) && r.sections.length > 0) {
+        setSections(r.sections.map((s: any) => ({ title: s.title || '', content: s.content || '' })));
+      }
+    }).catch(() => message.error('加载短评失败'));
   }, [editId]);
 
-  // Restore draft on mount (only for new reviews, not edits)
+  // Restore draft on mount
   useEffect(() => {
     if (editId) return;
     api.get(`/api/drafts/${draftKey}`).then(res => {
@@ -141,47 +128,50 @@ const PublishPage: React.FC = () => {
         cancelText: '丢弃',
         onOk: () => {
           if (draft.company) form.setFieldValue('company', draft.company);
-          if (draft.body) setBody(draft.body);
           if (Array.isArray(draft.tags)) setSelectedTags(draft.tags);
-          if (Array.isArray(draft.sources) && draft.sources.length > 0) {
-            form.setFieldValue('sources', draft.sources);
+          if (Array.isArray(draft.sources) && draft.sources.length > 0) form.setFieldValue('sources', draft.sources);
+          // body stores JSON of { description, sections }
+          if (draft.body) {
+            try {
+              const parsed = JSON.parse(draft.body);
+              if (parsed.description) setDescription(parsed.description);
+              if (Array.isArray(parsed.sections) && parsed.sections.length > 0) setSections(parsed.sections);
+            } catch { /* old plain-text draft, ignore */ }
           }
           message.success('草稿已恢复');
         },
-        onCancel: () => {
-          api.delete(`/api/drafts/${draftKey}`).catch(() => {});
-        },
+        onCancel: () => { api.delete(`/api/drafts/${draftKey}`).catch(() => {}); },
       });
     }).catch(() => {});
   }, [draftKey, editId]);
 
-  // Options for the right-hand tag dropdown, filtered by level
+  // Section helpers
+  const addSection = () => setSections(s => [...s, { title: '', content: '' }]);
+  const removeSection = (i: number) => setSections(s => s.filter((_, idx) => idx !== i));
+  const updateSection = (i: number, field: keyof Section, val: string) =>
+    setSections(s => s.map((sec, idx) => idx === i ? { ...sec, [field]: val } : sec));
+
+  // Tag picker options
   const tagPickerOptions = useMemo(() => {
     if (pickerLevel === 'L1') {
-      const l1 = [...L1_TAGS, ...customTags.filter(t => t.level === 'L1')];
-      return l1.map(t => ({ label: t.label, value: t.label }));
+      return [...L1_TAGS, ...customTags.filter(t => t.level === 'L1')].map(t => ({ label: t.label, value: t.label }));
     }
     const allL2 = [...L2_TAGS, ...customTags.filter(t => t.level === 'L2')];
-    const allL1Custom = customTags.filter(t => t.level === 'L1').map(t => t.label);
-    const domains = [...MAIN_DOMAINS, ...allL1Custom];
+    const domains = [...MAIN_DOMAINS, ...customTags.filter(t => t.level === 'L1').map(t => t.label)];
     return domains
       .map(d => ({ label: d, options: allL2.filter(t => t.parent === d).map(t => ({ label: t.label, value: t.label })) }))
       .filter(g => g.options.length > 0);
   }, [pickerLevel, customTags]);
 
-  const toggleTag = (label: string) => {
+  const toggleTag = (label: string) =>
     setSelectedTags(prev => prev.includes(label) ? prev.filter(t => t !== label) : [...prev, label]);
-  };
 
   const handleAddCustomTag = async () => {
     const label = newTagLabel.trim();
     if (!label) { message.warning('请输入标签'); return; }
     setNewTagSubmitting(true);
     try {
-      const res = await api.post('/api/tags', {
-        label, level: newTagLevel,
-        parent: newTagLevel === 'L2' ? newTagParent : undefined,
-      });
+      const res = await api.post('/api/tags', { label, level: newTagLevel, parent: newTagLevel === 'L2' ? newTagParent : undefined });
       setCustomTags(res.data.customTags || []);
       setSelectedTags(prev => [...prev, label]);
       message.success('已添加自定义标签');
@@ -195,15 +185,15 @@ const PublishPage: React.FC = () => {
 
   const handleAiFormat = async () => {
     if (!aiRawText.trim() || aiRawText.trim().length < 10) {
-      message.warning('请先粘贴原始材料（至少10字）');
-      return;
+      message.warning('请先粘贴原始材料（至少10字）'); return;
     }
     setAiLoading(true);
     try {
       const res = await api.post('/api/ai/format', { rawText: aiRawText });
-      const { title, body: aiBody, suggestedTags } = res.data;
+      const { title, description: aiDesc, sections: aiSections, suggestedTags } = res.data;
       if (title) form.setFieldValue('company', `【短评】${title}`);
-      if (aiBody) setBody(aiBody);
+      if (aiDesc) setDescription(aiDesc);
+      if (Array.isArray(aiSections) && aiSections.length > 0) setSections(aiSections);
       if (Array.isArray(suggestedTags) && suggestedTags.length > 0) {
         setSelectedTags(suggestedTags);
         message.success(`AI 已生成内容，推荐标签：${suggestedTags.join('、')}`);
@@ -217,63 +207,51 @@ const PublishPage: React.FC = () => {
   };
 
   const handleSubmit = async (values: any) => {
-    if (!body.trim() || body === '<br>' || body === '<p><br></p>') {
-      message.warning('请输入短评内容'); return;
+    if (!description.trim() && sections.every(s => !s.title.trim() && !s.content.trim())) {
+      message.warning('请填写摘要或至少一个观点'); return;
     }
     if (selectedTags.length === 0) {
       message.warning('请至少选择一个标签'); return;
     }
     setLoading(true);
     try {
-      const tmp = document.createElement('div');
-      tmp.innerHTML = body;
-      const firstLine = (tmp.textContent || '').trim().slice(0, 120);
+      const cleanSections = sections
+        .filter(s => s.title.trim() || s.content.trim())
+        .map(s => ({ title: s.title.trim(), content: s.content.trim() }));
+
       const payload = {
         company: values.company,
-        description: firstLine,
-        body,
-        sections: [],
+        description: description.trim(),
+        sections: cleanSections,
+        body: null, // structured reviews use sections, not HTML body
         tags: selectedTags,
         sources: (values.sources || []).filter((s: string) => s?.trim()),
       };
+
       if (editId) {
         await api.put(`/api/reviews/${editId}`, payload);
         message.success('短评已更新');
+        navigate(`/reviews/${editId}`);
       } else {
         const res = await api.post('/api/reviews', payload);
         message.success('短评发布成功');
         navigate(`/reviews/${res.data.id}`);
       }
-      // Clear draft after successful publish
       api.delete(`/api/drafts/${draftKey}`).catch(() => {});
-      if (editId) navigate(`/reviews/${editId}`);
     } catch (err: any) {
       message.error(err.response?.data?.error || '操作失败');
     }
     setLoading(false);
   };
 
-  // Preview card mock
-  const previewReview = {
-    id: '_preview',
-    company: form.getFieldValue('company') || '【短评】标题预览',
-    body,
-    description: '',
-    sections: [],
-    tags: selectedTags,
-    status: 'completed',
-    distributed: false,
-    heatScore: 9.5,
-    hasUnresolvedRevision: false,
-    createdAt: new Date().toISOString(),
-    author: { name: user?.name || '作者', avatarUrl: user?.avatarUrl },
-    scoringProgress: { scorers: [] },
-  };
+  const company = form.getFieldValue('company') || '【短评】标题预览';
+  const validSections = sections.filter(s => s.title.trim() || s.content.trim());
 
   return (
     <div style={{ maxWidth: 860, margin: '0 auto' }}>
       <Card>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        {/* Header row */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <Title level={4} style={{ color: '#FF6900', margin: 0 }}>
             {editId ? '编辑短评' : '发布短评'}
           </Title>
@@ -284,58 +262,36 @@ const PublishPage: React.FC = () => {
                 {saving ? '保存中...' : `已保存 ${dayjs(lastSaved).format('HH:mm:ss')}`}
               </Text>
             )}
-            <Tooltip title="手动保存草稿">
-              <Button
-                size="small"
-                icon={<SaveOutlined />}
-                loading={saving}
-                onClick={() => saveDraft(false)}
-              >
-                保存草稿
-              </Button>
-            </Tooltip>
-            <Tooltip title="预览文章全文">
-              <Button
-                size="small"
-                icon={<EyeOutlined />}
-                onClick={() => setArticlePreviewOpen(true)}
-              >
-                全文预览
-              </Button>
-            </Tooltip>
-            <Tooltip title="预览短评卡片样式">
-              <Button
-                size="small"
-                icon={<IdcardOutlined />}
-                onClick={() => setCardPreviewOpen(true)}
-              >
-                卡片预览
-              </Button>
-            </Tooltip>
+            <Button size="small" icon={<SaveOutlined />} loading={saving} onClick={() => saveDraft(false)}>
+              保存草稿
+            </Button>
+            <Button size="small" icon={<EyeOutlined />} onClick={() => setPreviewOpen(true)}>
+              预览卡片
+            </Button>
           </Space>
         </div>
 
         {/* ── AI 排版助手 ─────────────────────────────────────── */}
         <Collapse
           ghost
-          style={{ marginBottom: 20, border: '1px dashed #D4BF98', borderRadius: 4, background: 'rgba(255,252,248,0.6)' }}
+          style={{ marginBottom: 24, border: '1px dashed #D4BF98', borderRadius: 4, background: 'rgba(255,252,248,0.6)' }}
           items={[{
             key: 'ai',
             label: (
               <span style={{ fontSize: 13, color: '#FF6900', fontWeight: 600 }}>
                 <ThunderboltOutlined style={{ marginRight: 6 }} />
-                AI 排版助手 — 贴入原文，一键生成短评
+                AI 排版助手 — 贴入原文，一键生成结构化短评
               </span>
             ),
             children: (
               <div style={{ paddingBottom: 4 }}>
                 <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
-                  将文章摘录、会议记录、要点笔记等原始材料贴入下方，AI 将自动提炼标题、正文结构和推荐标签。
+                  将文章摘录、会议记录、要点笔记等贴入下方，AI 自动提炼标题、摘要和观点列表。
                 </Text>
-                <Input.TextArea
+                <TextArea
                   value={aiRawText}
                   onChange={e => setAiRawText(e.target.value)}
-                  placeholder="粘贴原始材料、文章内容或笔记要点..."
+                  placeholder="粘贴原始材料..."
                   autoSize={{ minRows: 5, maxRows: 14 }}
                   style={{ fontSize: 12, marginBottom: 12, background: '#FDFCF8', borderColor: '#D4BF98' }}
                 />
@@ -364,35 +320,124 @@ const PublishPage: React.FC = () => {
           onFinish={handleSubmit}
           initialValues={{ sources: [''], company: '【短评】' }}
         >
+          {/* ── 标题 ── */}
           <Form.Item
             name="company"
             label="主标题（目标公司 / 事件）"
             rules={[{ required: true, message: '请输入目标公司或事件' }]}
             getValueFromEvent={(e) => {
               const raw: string = e.target.value;
-              if (!raw.startsWith('【短评】')) return '【短评】' + raw.replace(/^【短评】*/, '');
-              return raw;
+              return raw.startsWith('【短评】') ? raw : '【短评】' + raw.replace(/^【短评】*/, '');
             }}
           >
             <Input size="large" />
           </Form.Item>
 
-          <Form.Item label="正文">
-            <RichEditor value={body} onChange={setBody} placeholder="" />
+          {/* ── 摘要 ── */}
+          <Form.Item label={
+            <span>
+              一句话摘要
+              <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>显示在卡片正文区域</Text>
+            </span>
+          }>
+            <TextArea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="用一两句话概括核心事件或核心观点..."
+              autoSize={{ minRows: 2, maxRows: 4 }}
+              maxLength={200}
+              showCount
+              style={{ background: '#FDFCF8' }}
+            />
           </Form.Item>
 
-          <Divider />
+          <Divider style={{ margin: '16px 0' }} />
 
+          {/* ── 观点/亮点块 ── */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text strong>
+                观点 / 技术亮点
+                <Text type="secondary" style={{ fontSize: 11, fontWeight: 400, marginLeft: 6 }}>
+                  每条显示为卡片上的编号圆圈要点
+                </Text>
+              </Text>
+              <Button
+                type="dashed"
+                size="small"
+                icon={<PlusOutlined />}
+                onClick={addSection}
+                disabled={sections.length >= 8}
+              >
+                添加观点
+              </Button>
+            </div>
+
+            {sections.map((sec, i) => (
+              <div
+                key={i}
+                style={{
+                  display: 'flex',
+                  gap: 10,
+                  marginBottom: 12,
+                  padding: '12px 14px',
+                  background: '#FDFCF8',
+                  border: '1px solid #EDE0C4',
+                  borderRadius: 4,
+                  borderLeft: '3px solid #FF6900',
+                }}
+              >
+                {/* Circle number */}
+                <div style={{
+                  flexShrink: 0,
+                  width: 24, height: 24, borderRadius: '50%',
+                  background: '#FF6A00', color: '#fff',
+                  fontSize: 12, fontWeight: 700,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  marginTop: 6,
+                }}>
+                  {i + 1}
+                </div>
+
+                <div style={{ flex: 1 }}>
+                  <Input
+                    value={sec.title}
+                    onChange={e => updateSection(i, 'title', e.target.value)}
+                    placeholder={`观点标题 ${i + 1}（15字以内，显示为卡片要点）`}
+                    maxLength={40}
+                    style={{ marginBottom: 6, fontWeight: 600, background: '#FDFCF8' }}
+                  />
+                  <TextArea
+                    value={sec.content}
+                    onChange={e => updateSection(i, 'content', e.target.value)}
+                    placeholder="详细说明（展开阅读时显示）..."
+                    autoSize={{ minRows: 2, maxRows: 6 }}
+                    style={{ fontSize: 12, background: '#FDFCF8' }}
+                  />
+                </div>
+
+                {sections.length > 1 && (
+                  <Tooltip title="删除此观点">
+                    <MinusCircleOutlined
+                      onClick={() => removeSection(i)}
+                      style={{ color: '#ccc', fontSize: 16, marginTop: 6, cursor: 'pointer', flexShrink: 0 }}
+                    />
+                  </Tooltip>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <Divider style={{ margin: '16px 0' }} />
+
+          {/* ── 标签 ── */}
           <Form.Item label="标签" required>
             <Space.Compact style={{ width: '100%' }}>
               <Select
                 value={pickerLevel}
                 onChange={setPickerLevel}
                 style={{ width: 130, flexShrink: 0 }}
-                options={[
-                  { label: '一级标签', value: 'L1' },
-                  { label: '二级标签', value: 'L2' },
-                ]}
+                options={[{ label: '一级标签', value: 'L1' }, { label: '二级标签', value: 'L2' }]}
               />
               <Select
                 mode="multiple"
@@ -403,12 +448,11 @@ const PublishPage: React.FC = () => {
                   return def ? def.level === pickerLevel : pickerLevel === 'L2';
                 })}
                 onChange={(vals: string[]) => {
-                  const otherLevel = selectedTags.filter(t => {
+                  const other = selectedTags.filter(t => {
                     const def = [...L1_TAGS, ...L2_TAGS, ...customTags].find(d => d.label === t);
-                    const lvl = def ? def.level : 'L2';
-                    return lvl !== pickerLevel;
+                    return (def ? def.level : 'L2') !== pickerLevel;
                   });
-                  setSelectedTags([...otherLevel, ...vals]);
+                  setSelectedTags([...other, ...vals]);
                 }}
                 options={tagPickerOptions as any}
                 tagRender={(props) => {
@@ -442,6 +486,7 @@ const PublishPage: React.FC = () => {
             )}
           </Form.Item>
 
+          {/* ── 来源 ── */}
           <Form.List name="sources">
             {(fields, { add, remove }) => (
               <div>
@@ -449,7 +494,7 @@ const PublishPage: React.FC = () => {
                 {fields.map(({ key, name, ...rest }) => (
                   <Space key={key} style={{ display: 'flex', marginTop: 8 }} align="start">
                     <Form.Item {...rest} name={name} style={{ marginBottom: 0, flex: 1, minWidth: 0, width: '100%' }}>
-                      <Input />
+                      <Input placeholder="https://..." />
                     </Form.Item>
                     {fields.length > 1 && (
                       <MinusCircleOutlined onClick={() => remove(name)} style={{ color: '#999', marginTop: 8 }} />
@@ -474,34 +519,63 @@ const PublishPage: React.FC = () => {
         </Form>
       </Card>
 
-      {/* ── Article preview modal ─────────────────────────────────── */}
+      {/* ── Preview modal ─────────────────────────────────────────── */}
       <Modal
-        open={articlePreviewOpen}
-        title="全文预览"
-        onCancel={() => setArticlePreviewOpen(false)}
-        footer={null}
-        width={720}
-        styles={{ body: { maxHeight: '75vh', overflowY: 'auto', padding: '24px 32px' } }}
-      >
-        <div style={{ marginBottom: 12 }}>
-          <Text strong style={{ fontSize: 18 }}>{form.getFieldValue('company') || '（无标题）'}</Text>
-        </div>
-        {body ? <HtmlRenderer html={body} /> : <Text type="secondary">（正文为空）</Text>}
-      </Modal>
-
-      {/* ── Card preview modal ────────────────────────────────────── */}
-      <Modal
-        open={cardPreviewOpen}
+        open={previewOpen}
         title="卡片预览"
-        onCancel={() => setCardPreviewOpen(false)}
+        onCancel={() => setPreviewOpen(false)}
         footer={null}
-        width={600}
-        styles={{ body: { padding: '24px 20px' } }}
+        width={640}
+        styles={{ body: { padding: '20px 24px' } }}
       >
-        <Text type="secondary" style={{ display: 'block', fontSize: 11, marginBottom: 12 }}>
-          这是短评在短评池中显示的卡片样式
+        <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 12 }}>
+          短评卡片在短评池中显示的样式
         </Text>
-        <ReviewCard review={previewReview} onClick={() => {}} />
+        {/* Mini preview card */}
+        <div style={{
+          border: '1px solid #D4BF98',
+          borderLeft: '4px solid #FF6900',
+          borderRadius: 3,
+          background: '#FDFCF8',
+          padding: '16px 20px',
+          boxShadow: '2px 3px 0 #C8AE80',
+        }}>
+          <Text strong style={{ fontSize: 15 }}>{company}</Text>
+          <p style={{ color: '#888', fontSize: 13, margin: '8px 0 10px', lineHeight: 1.6 }}>
+            {description || '（摘要为空）'}
+          </p>
+          {validSections.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+              {validSections.slice(0, 5).map((sec, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                  <span style={{
+                    flexShrink: 0, marginTop: 2,
+                    width: 18, height: 18, borderRadius: '50%',
+                    background: '#FF6A00', color: '#fff',
+                    fontSize: 11, fontWeight: 700,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  }}>{i + 1}</span>
+                  <Text style={{ fontSize: 13, color: '#333', lineHeight: 1.5 }}>
+                    {sec.title || '（无标题）'}
+                  </Text>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ borderTop: '1px solid #f5f5f5', paddingTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {selectedTags.map(tag => {
+              const c = getTagColor(tag, customTags);
+              return (
+                <AntTag key={tag} style={{ borderColor: c.border, background: c.bg, color: c.text, fontSize: 11, margin: 0 }}>
+                  #{tag}
+                </AntTag>
+              );
+            })}
+            <Text type="secondary" style={{ fontSize: 12, marginLeft: 'auto' }}>
+              {user?.name} · {dayjs().format('MM/DD HH:mm')}
+            </Text>
+          </div>
+        </div>
       </Modal>
 
       {/* ── Custom tag modal ──────────────────────────────────────── */}
@@ -511,8 +585,7 @@ const PublishPage: React.FC = () => {
         onCancel={() => setTagModalOpen(false)}
         onOk={handleAddCustomTag}
         confirmLoading={newTagSubmitting}
-        okText="添加"
-        cancelText="取消"
+        okText="添加" cancelText="取消"
       >
         <Space direction="vertical" style={{ width: '100%' }} size={12}>
           <div>

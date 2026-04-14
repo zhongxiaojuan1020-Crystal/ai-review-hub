@@ -3,7 +3,6 @@ import { Layout, Menu, Avatar, Dropdown, Typography, Space, Drawer, Button } fro
 import {
   FileTextOutlined, FireOutlined, PlusOutlined, SendOutlined,
   UserOutlined, LogoutOutlined, SettingOutlined, MenuOutlined,
-  StarOutlined, HomeOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
@@ -30,7 +29,6 @@ const AppLayout: React.FC = () => {
     { key: '/ranking', icon: <FireOutlined />, label: '最热短评榜' },
     { key: '/reviews', icon: <FileTextOutlined />, label: '短评池' },
     { key: '/publish', icon: <PlusOutlined />, label: '发布短评' },
-    { key: '/favorites', icon: <StarOutlined />, label: '我的收藏' },
     ...(user?.role === 'supervisor'
       ? [
           { key: '/distribute', icon: <SendOutlined />, label: '分发管理' },
@@ -44,7 +42,6 @@ const AppLayout: React.FC = () => {
     { key: '/ranking', icon: <FireOutlined />, label: '热榜' },
     { key: '/reviews', icon: <FileTextOutlined />, label: '短评池' },
     { key: '/publish', icon: <PlusOutlined />, label: '发布' },
-    { key: '/favorites', icon: <StarOutlined />, label: '收藏' },
     { key: '/profile', icon: <UserOutlined />, label: '我的' },
   ];
 

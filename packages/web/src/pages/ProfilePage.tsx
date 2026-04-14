@@ -8,8 +8,10 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useAuthStore } from '../stores/authStore';
+import { useFavoritesStore } from '../stores/favoritesStore';
 import api from '../api/client';
 import ReviewDetailDrawer from '../components/ReviewDetailDrawer';
+import ReviewCard from '../components/Review/ReviewCard';
 
 const { Title, Text } = Typography;
 
@@ -18,6 +20,11 @@ const ProfilePage: React.FC = () => {
   const [reviews, setReviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [drawerReviewId, setDrawerReviewId] = useState<string | null>(null);
+
+  // Favorites tab state
+  const { hydrate } = useFavoritesStore();
+  const [favorites, setFavorites] = useState<any[]>([]);
+  const [favLoading, setFavLoading] = useState(false);
 
   // Profile edit state
   const [editName, setEditName] = useState(false);
@@ -39,6 +46,15 @@ const ProfilePage: React.FC = () => {
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
+
+  const fetchFavorites = async () => {
+    setFavLoading(true);
+    try {
+      const res = await api.get('/api/favorites');
+      setFavorites(res.data);
+    } catch { /* ignore */ }
+    setFavLoading(false);
+  };
 
   useEffect(() => {
     if (user?.name) setNameValue(user.name);
@@ -231,40 +247,64 @@ const ProfilePage: React.FC = () => {
       </Card>
 
       <Card>
-        <Tabs items={[
-          {
-            key: 'my-reviews',
-            label: '我的短评',
-            children: loading ? <Spin /> : myReviews.length === 0 ? <Empty description="暂无短评" /> : (
-              myReviews.map(r => (
-                <Card key={r.id} size="small" hoverable style={{ marginBottom: 8 }}
-                  onClick={() => setDrawerReviewId(r.id)}>
-                  <Space>
-                    <Text strong>{r.company}</Text>
-                    <Tag>{r.status === 'completed' ? '已完成' : '评分中'}</Tag>
-                    <Text type="secondary">{dayjs(r.createdAt).format('MM/DD')}</Text>
-                  </Space>
-                </Card>
-              ))
-            ),
-          },
-          {
-            key: 'my-scores',
-            label: '我的评分记录',
-            children: loading ? <Spin /> : myScoredReviews.length === 0 ? <Empty description="暂无评分" /> : (
-              myScoredReviews.map(r => (
-                <Card key={r.id} size="small" hoverable style={{ marginBottom: 8 }}
-                  onClick={() => setDrawerReviewId(r.id)}>
-                  <Space>
-                    <Text strong>{r.company}</Text>
-                    <Text type="secondary">{r.author?.name}</Text>
-                    <Text type="secondary">{dayjs(r.createdAt).format('MM/DD')}</Text>
-                  </Space>
-                </Card>
-              ))
-            ),
-          },
-        ]} />
+        <Tabs
+          items={[
+            {
+              key: 'my-reviews',
+              label: '我的短评',
+              children: loading ? <Spin /> : myReviews.length === 0 ? <Empty description="暂无短评" /> : (
+                myReviews.map(r => (
+                  <Card key={r.id} size="small" hoverable style={{ marginBottom: 8 }}
+                    onClick={() => setDrawerReviewId(r.id)}>
+                    <Space>
+                      <Text strong>{r.company}</Text>
+                      <Tag>{r.status === 'completed' ? '已完成' : '评分中'}</Tag>
+                      <Text type="secondary">{dayjs(r.createdAt).format('MM/DD')}</Text>
+                    </Space>
+                  </Card>
+                ))
+              ),
+            },
+            {
+              key: 'my-scores',
+              label: '我的评分记录',
+              children: loading ? <Spin /> : myScoredReviews.length === 0 ? <Empty description="暂无评分" /> : (
+                myScoredReviews.map(r => (
+                  <Card key={r.id} size="small" hoverable style={{ marginBottom: 8 }}
+                    onClick={() => setDrawerReviewId(r.id)}>
+                    <Space>
+                      <Text strong>{r.company}</Text>
+                      <Text type="secondary">{r.author?.name}</Text>
+                      <Text type="secondary">{dayjs(r.createdAt).format('MM/DD')}</Text>
+                    </Space>
+                  </Card>
+                ))
+              ),
+            },
+            {
+              key: 'favorites',
+              label: <span><StarOutlined style={{ marginRight: 4 }} />我的收藏</span>,
+              children: favLoading ? <Spin /> : favorites.length === 0 ? (
+                <Empty description="还没有收藏任何短评，去短评池里收藏吧 ✨" />
+              ) : (
+                favorites.map((r, i) => (
+                  <ReviewCard
+                    key={r.id}
+                    review={r}
+                    onClick={() => setDrawerReviewId(r.id)}
+                    tiltDeg={[-0.5, 0.4, -0.25][i % 3]}
+                  />
+                ))
+              ),
+            },
+          ]}
+          onChange={(key) => {
+            if (key === 'favorites' && favorites.length === 0) {
+              fetchFavorites();
+              hydrate();
+            }
+          }}
+        />
       </Card>
 
       {/* Change password modal */}

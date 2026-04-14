@@ -12,6 +12,7 @@ import { distributeRoutes } from './routes/distribute.js';
 import { guestRoutes } from './routes/guest.js';
 import { userRoutes } from './routes/users.js';
 import { configRoutes } from './routes/config.js';
+import { aiRoutes } from './routes/ai.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -53,6 +54,7 @@ await app.register(distributeRoutes);
 await app.register(guestRoutes);
 await app.register(userRoutes);
 await app.register(configRoutes);
+await app.register(aiRoutes);
 
 // Serve static frontend in production
 const publicDir = path.resolve(__dirname, '../../web/dist');

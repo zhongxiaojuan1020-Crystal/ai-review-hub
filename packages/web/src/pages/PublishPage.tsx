@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Card, Form, Input, Button, Select, Typography, Space, message, Divider,
-  Modal, Radio, Tag as AntTag,
+  Modal, Radio, Tag as AntTag, Collapse,
 } from 'antd';
-import { PlusOutlined, MinusCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined, MinusCircleOutlined, ThunderboltOutlined, LoadingOutlined } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   L1_TAGS, L2_TAGS, MAIN_DOMAINS, getTagColor, type TagDef,
@@ -23,6 +23,10 @@ const PublishPage: React.FC = () => {
   const [body, setBody] = useState('');
   const [customTags, setCustomTags] = useState<TagDef[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
+  // AI assistant state
+  const [aiRawText, setAiRawText] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
   const [pickerLevel, setPickerLevel] = useState<'L1' | 'L2'>('L1');
 
   // Custom tag modal
@@ -121,6 +125,35 @@ const PublishPage: React.FC = () => {
     setNewTagSubmitting(false);
   };
 
+  const handleAiFormat = async () => {
+    if (!aiRawText.trim() || aiRawText.trim().length < 10) {
+      message.warning('请先粘贴原始材料（至少10字）');
+      return;
+    }
+    setAiLoading(true);
+    try {
+      const res = await api.post('/api/ai/format', { rawText: aiRawText });
+      const { title, body: aiBody, suggestedTags } = res.data;
+
+      if (title) {
+        form.setFieldValue('company', `【短评】${title}`);
+      }
+      if (aiBody) {
+        setBody(aiBody);
+      }
+      if (Array.isArray(suggestedTags) && suggestedTags.length > 0) {
+        setSelectedTags(suggestedTags);
+        message.success(`AI 已生成内容，推荐标签：${suggestedTags.join('、')}`);
+      } else {
+        message.success('AI 排版完成，请检查并微调内容');
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || 'AI 生成失败，请检查 ANTHROPIC_API_KEY 是否配置';
+      message.error(msg);
+    }
+    setAiLoading(false);
+  };
+
   const handleSubmit = async (values: any) => {
     if (!body.trim() || body === '<br>' || body === '<p><br></p>') {
       message.warning('请输入短评内容');
@@ -165,9 +198,52 @@ const PublishPage: React.FC = () => {
   return (
     <div style={{ maxWidth: 860, margin: '0 auto' }}>
       <Card>
-        <Title level={4} style={{ color: '#FF6A00' }}>
+        <Title level={4} style={{ color: '#FF6900' }}>
           {editId ? '编辑短评' : '发布短评'}
         </Title>
+
+        {/* ── AI 排版助手 ─────────────────────────────────────── */}
+        <Collapse
+          ghost
+          style={{ marginBottom: 20, border: '1px dashed #D4BF98', borderRadius: 4, background: 'rgba(255,252,248,0.6)' }}
+          items={[{
+            key: 'ai',
+            label: (
+              <span style={{ fontSize: 13, color: '#FF6900', fontWeight: 600 }}>
+                <ThunderboltOutlined style={{ marginRight: 6 }} />
+                AI 排版助手 — 贴入原文，一键生成短评
+              </span>
+            ),
+            children: (
+              <div style={{ paddingBottom: 4 }}>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+                  将文章摘录、会议记录、要点笔记等原始材料贴入下方，AI 将自动提炼标题、正文结构和推荐标签。
+                </Text>
+                <Input.TextArea
+                  value={aiRawText}
+                  onChange={e => setAiRawText(e.target.value)}
+                  placeholder="粘贴原始材料、文章内容或笔记要点..."
+                  autoSize={{ minRows: 5, maxRows: 14 }}
+                  style={{ fontSize: 12, marginBottom: 12, background: '#FDFCF8', borderColor: '#D4BF98' }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 11, color: '#A8906C' }}>
+                    {aiRawText.length > 0 ? `${aiRawText.length} 字` : ''}
+                  </Text>
+                  <Button
+                    type="primary"
+                    icon={aiLoading ? <LoadingOutlined /> : <ThunderboltOutlined />}
+                    onClick={handleAiFormat}
+                    loading={aiLoading}
+                    disabled={aiRawText.trim().length < 10}
+                  >
+                    {aiLoading ? 'AI 正在整理...' : '一键生成短评'}
+                  </Button>
+                </div>
+              </div>
+            ),
+          }]}
+        />
 
         <Form
           form={form}

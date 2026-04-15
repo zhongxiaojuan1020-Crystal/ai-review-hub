@@ -126,8 +126,8 @@ const ReviewDetailPage: React.FC = () => {
 
         <Divider />
 
-        {/* Body (new rich-text editor) — falls back to description + sections for legacy reviews */}
-        {review.body ? (
+        {/* Body: HTML (old rich editor) or structured (description + sections) */}
+        {review.body && !review.body.startsWith('{') ? (
           <div style={{ marginBottom: 24 }}>
             <HtmlRenderer html={review.body} />
           </div>
@@ -137,6 +137,7 @@ const ReviewDetailPage: React.FC = () => {
               <Text strong style={{ fontSize: 14, color: '#999' }}>事件描述</Text>
               <ContentRenderer
                 content={review.description}
+                legacyImages={(() => { try { return review.body ? JSON.parse(review.body).descriptionImages : undefined; } catch { return undefined; } })()}
                 style={{ fontSize: 15, marginTop: 8 }}
               />
             </div>

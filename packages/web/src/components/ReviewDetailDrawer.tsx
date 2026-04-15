@@ -154,8 +154,8 @@ const ReviewDetailDrawer: React.FC<Props> = ({ reviewId, open, onClose, onChange
 
             <Divider style={{ margin: '12px 0' }} />
 
-            {/* Body (new rich-text editor) — legacy fallback */}
-            {review.body ? (
+            {/* Body: HTML (old rich editor) or structured (description + sections) */}
+            {review.body && !review.body.startsWith('{') ? (
               <div style={{ marginBottom: 20 }}>
                 <HtmlRenderer html={review.body} />
               </div>
@@ -165,6 +165,7 @@ const ReviewDetailDrawer: React.FC<Props> = ({ reviewId, open, onClose, onChange
                   <Text strong style={{ fontSize: 13, color: '#999' }}>事件描述</Text>
                   <ContentRenderer
                     content={review.description}
+                    legacyImages={(() => { try { return review.body ? JSON.parse(review.body).descriptionImages : undefined; } catch { return undefined; } })()}
                     style={{ fontSize: 14, marginTop: 6 }}
                   />
                 </div>

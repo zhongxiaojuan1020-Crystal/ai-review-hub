@@ -77,12 +77,16 @@ const DistributePreview: React.FC<Props> = ({ reviewId, open, onCancel, onConfir
 
           <Divider style={{ margin: '12px 0' }} />
 
-          {/* Body (new rich-text) or legacy description + sections */}
-          {review.body ? (
+          {/* Body: HTML (old rich editor) or structured (description + sections) */}
+          {review.body && !review.body.startsWith('{') ? (
             <HtmlRenderer html={review.body} style={{ fontSize: 14 }} />
           ) : (
             <>
-              <ContentRenderer content={review.description} style={{ fontSize: 14, color: '#333' }} />
+              <ContentRenderer
+                content={review.description}
+                legacyImages={(() => { try { return review.body ? JSON.parse(review.body).descriptionImages : undefined; } catch { return undefined; } })()}
+                style={{ fontSize: 14, color: '#333' }}
+              />
               {(review.sections as any[])?.map((section: any, idx: number) => (
                 <div key={idx} style={{ marginBottom: 12, padding: '10px 14px', background: '#fff', borderRadius: 8, borderLeft: '3px solid #FF6A00' }}>
                   <Text strong style={{ color: '#FF6A00', fontSize: 14 }}>{section.title}</Text>

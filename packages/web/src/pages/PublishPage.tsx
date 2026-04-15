@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import {
   PlusOutlined, MinusCircleOutlined, ThunderboltOutlined, LoadingOutlined,
-  EyeOutlined, IdcardOutlined, SaveOutlined, DragOutlined,
+  EyeOutlined, SaveOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -14,8 +14,7 @@ import {
 import dayjs from 'dayjs';
 import api from '../api/client';
 import { useAuthStore } from '../stores/authStore';
-import RichEditor, { sanitizeHtml } from '../components/RichEditor';
-import { plainTextFromHtml } from '../components/Review/ReviewCard';
+import TextAreaWithImages from '../components/TextAreaWithImages';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -25,6 +24,7 @@ const AUTO_SAVE_INTERVAL = 30_000;
 interface Section {
   title: string;
   content: string;
+  images: string[];
 }
 
 const PublishPage: React.FC = () => {
@@ -37,7 +37,8 @@ const PublishPage: React.FC = () => {
 
   // Structured fields
   const [description, setDescription] = useState('');
-  const [sections, setSections] = useState<Section[]>([{ title: '', content: '' }]);
+  const [descImages, setDescImages] = useState<string[]>([]);
+  const [sections, setSections] = useState<Section[]>([{ title: '', content: '', images: [] }]);
   const [customTags, setCustomTags] = useState<TagDef[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [pickerLevel, setPickerLevel] = useState<'L1' | 'L2'>('L1');
@@ -62,7 +63,7 @@ const PublishPage: React.FC = () => {
   const dirtyRef = useRef(false);
   const draftKey = editId ? `edit:${editId}` : 'publish';
 
-  useEffect(() => { dirtyRef.current = true; }, [description, sections, selectedTags]);
+  useEffect(() => { dirtyRef.current = true; }, [description, descImages, sections, selectedTags]);
 
   const saveDraft = useCallback(async (silent = true) => {
     if (!dirtyRef.current) return;
@@ -73,7 +74,7 @@ const PublishPage: React.FC = () => {
     try {
       await api.put(`/api/drafts/${draftKey}`, {
         company,
-        body: JSON.stringify({ description, sections }), // store structured as JSON in body field
+        body: JSON.stringify({ description, descImages, sections }),
         tags: selectedTags,
         sources: (sources || []).filter((s: string) => s?.trim()),
       });
@@ -84,7 +85,7 @@ const PublishPage: React.FC = () => {
       if (!silent) message.error('草稿保存失败');
     }
     setSaving(false);
-  }, [description, sections, selectedTags, draftKey, form]);
+  }, [description, descImages, sections, selectedTags, draftKey, form]);
 
   useEffect(() => {
     const timer = setInterval(() => saveDraft(true), AUTO_SAVE_INTERVAL);
@@ -111,7 +112,11 @@ const PublishPage: React.FC = () => {
       setSelectedTags(r.tags || []);
       setDescription(r.description || '');
       if (Array.isArray(r.sections) && r.sections.length > 0) {
-        setSections(r.sections.map((s: any) => ({ title: s.title || '', content: s.content || '' })));
+        setSections(r.sections.map((s: any) => ({
+          title: s.title || '',
+          content: s.content || '',
+          images: Array.isArray(s.images) ? s.images : [],
+        })));
       }
     }).catch(() => message.error('加载短评失败'));
   }, [editId]);
@@ -132,20 +137,19 @@ const PublishPage: React.FC = () => {
           if (draft.company) form.setFieldValue('company', draft.company);
           if (Array.isArray(draft.tags)) setSelectedTags(draft.tags);
           if (Array.isArray(draft.sources) && draft.sources.length > 0) form.setFieldValue('sources', draft.sources);
-          // body stores JSON of { description, sections }
           if (draft.body) {
             try {
               const parsed = JSON.parse(draft.body);
-              // Sanitize HTML on restore to strip any garbage from previous pastes
-              if (parsed.description) setDescription(sanitizeHtml(parsed.description));
+              if (typeof parsed.description === 'string') setDescription(parsed.description);
+              if (Array.isArray(parsed.descImages)) setDescImages(parsed.descImages);
               if (Array.isArray(parsed.sections) && parsed.sections.length > 0) {
-                setSections(parsed.sections.map((s: Section) => ({
+                setSections(parsed.sections.map((s: any) => ({
                   title: s.title || '',
-                  content: sanitizeHtml(s.content || ''),
+                  content: s.content || '',
+                  images: Array.isArray(s.images) ? s.images : [],
                 })));
               }
             } catch {
-              // Old plain-text or corrupted draft — just discard the body
               api.delete(`/api/drafts/${draftKey}`).catch(() => {});
               message.warning('旧格式草稿已丢弃，请重新编辑');
               return;
@@ -159,9 +163,9 @@ const PublishPage: React.FC = () => {
   }, [draftKey, editId]);
 
   // Section helpers
-  const addSection = () => setSections(s => [...s, { title: '', content: '' }]);
+  const addSection = () => setSections(s => [...s, { title: '', content: '', images: [] }]);
   const removeSection = (i: number) => setSections(s => s.filter((_, idx) => idx !== i));
-  const updateSection = (i: number, field: keyof Section, val: string) =>
+  const updateSection = (i: number, field: keyof Section, val: any) =>
     setSections(s => s.map((sec, idx) => idx === i ? { ...sec, [field]: val } : sec));
 
   // Tag picker options
@@ -206,7 +210,13 @@ const PublishPage: React.FC = () => {
       const { title, description: aiDesc, sections: aiSections, suggestedTags } = res.data;
       if (title) form.setFieldValue('company', `【短评】${title}`);
       if (aiDesc) setDescription(aiDesc);
-      if (Array.isArray(aiSections) && aiSections.length > 0) setSections(aiSections);
+      if (Array.isArray(aiSections) && aiSections.length > 0) {
+        setSections(aiSections.map((s: any) => ({
+          title: s.title || '',
+          content: s.content || '',
+          images: [],
+        })));
+      }
       if (Array.isArray(suggestedTags) && suggestedTags.length > 0) {
         setSelectedTags(suggestedTags);
         message.success(`AI 已生成内容，推荐标签：${suggestedTags.join('、')}`);
@@ -229,14 +239,18 @@ const PublishPage: React.FC = () => {
     setLoading(true);
     try {
       const cleanSections = sections
-        .filter(s => s.title.trim() || s.content.trim())
-        .map(s => ({ title: s.title.trim(), content: s.content.trim() }));
+        .filter(s => s.title.trim() || s.content.trim() || s.images.length > 0)
+        .map(s => ({
+          title: s.title.trim(),
+          content: s.content.trim(),
+          images: s.images,
+        }));
 
       const payload = {
         company: values.company,
         description: description.trim(),
         sections: cleanSections,
-        body: null, // structured reviews use sections, not HTML body
+        body: descImages.length > 0 ? JSON.stringify({ descriptionImages: descImages }) : null,
         tags: selectedTags,
         sources: (values.sources || []).filter((s: string) => s?.trim()),
       };
@@ -350,14 +364,16 @@ const PublishPage: React.FC = () => {
           <Form.Item label={
             <span>
               事件摘要
-              <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>显示在卡片正文区域，可粘贴图片</Text>
+              <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>显示在卡片正文区域，可粘贴截图</Text>
             </span>
           }>
-            <RichEditor
-              value={description}
-              onChange={setDescription}
-              placeholder="概括核心事件或背景，可直接粘贴截图..."
-              minHeight={100}
+            <TextAreaWithImages
+              text={description}
+              images={descImages}
+              onTextChange={setDescription}
+              onImagesChange={setDescImages}
+              placeholder="概括核心事件或背景..."
+              minRows={3}
             />
           </Form.Item>
 
@@ -369,7 +385,7 @@ const PublishPage: React.FC = () => {
               <Text strong>
                 观点 / 技术亮点
                 <Text type="secondary" style={{ fontSize: 11, fontWeight: 400, marginLeft: 6 }}>
-                  每条显示为卡片上的编号圆圈要点
+                  副标题可自定义，如"技术亮点一"、"观点一"等
                 </Text>
               </Text>
               <Button
@@ -413,14 +429,16 @@ const PublishPage: React.FC = () => {
                   <Input
                     value={sec.title}
                     onChange={e => updateSection(i, 'title', e.target.value)}
-                    placeholder={`观点标题 ${i + 1}（显示为卡片要点）`}
+                    placeholder={`副标题（如"技术亮点${i + 1}"、"观点${i + 1}"等）`}
                     style={{ marginBottom: 6, fontWeight: 600, background: '#FDFCF8' }}
                   />
-                  <RichEditor
-                    value={sec.content}
-                    onChange={val => updateSection(i, 'content', val)}
-                    placeholder="详细说明（可粘贴截图、上传图片）..."
-                    minHeight={80}
+                  <TextAreaWithImages
+                    text={sec.content}
+                    images={sec.images}
+                    onTextChange={val => updateSection(i, 'content', val)}
+                    onImagesChange={imgs => updateSection(i, 'images', imgs)}
+                    placeholder="详细说明..."
+                    minRows={2}
                   />
                 </div>
 
@@ -554,7 +572,7 @@ const PublishPage: React.FC = () => {
             overflow: 'hidden', display: '-webkit-box',
             WebkitLineClamp: 3, WebkitBoxOrient: 'vertical',
           }}>
-            {plainTextFromHtml(description) || '（摘要为空）'}
+            {description || '（摘要为空）'}
           </p>
           {validSections.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
@@ -568,7 +586,7 @@ const PublishPage: React.FC = () => {
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                   }}>{i + 1}</span>
                   <Text style={{ fontSize: 13, color: '#333', lineHeight: 1.5 }}>
-                    {plainTextFromHtml(sec.title) || '（无标题）'}
+                    {sec.title || '（无标题）'}
                   </Text>
                 </div>
               ))}

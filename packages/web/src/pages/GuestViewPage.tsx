@@ -142,13 +142,14 @@ const GuestViewPage: React.FC = () => {
 
           <Divider style={{ margin: '12px 0' }} />
 
-          {/* Body (new rich-text) or legacy description + sections */}
-          {review.body ? (
+          {/* Body: HTML (old rich editor) or structured (description + sections) */}
+          {review.body && !review.body.startsWith('{') ? (
             <HtmlRenderer html={review.body} style={{ marginBottom: 16 }} />
           ) : (
             <>
               <ContentRenderer
                 content={review.description}
+                legacyImages={(() => { try { return review.body ? JSON.parse(review.body).descriptionImages : undefined; } catch { return undefined; } })()}
                 style={{ fontSize: 15, color: '#333', marginBottom: 16, lineHeight: 1.8 }}
               />
               {(review.sections as any[])?.map((section: any, idx: number) => (

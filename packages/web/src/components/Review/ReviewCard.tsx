@@ -49,8 +49,9 @@ interface ReviewCardProps {
 const ReviewCard: React.FC<ReviewCardProps> = ({ review, onClick, tiltDeg }) => {
   const progress = review.scoringProgress;
   const sections: any[] = review.sections || [];
-  const hasBody = !!review.body;
-  const bodyPreview = hasBody ? plainTextFromHtml(review.body) : '';
+  // body can be HTML (old rich editor) or JSON metadata (new structured) or null
+  const hasHtmlBody = !!review.body && !review.body.startsWith('{');
+  const bodyPreview = hasHtmlBody ? plainTextFromHtml(review.body) : '';
 
   const { isFavorited, toggle } = useFavoritesStore();
   const favorited = isFavorited(review.id);
@@ -120,11 +121,11 @@ const ReviewCard: React.FC<ReviewCardProps> = ({ review, onClick, tiltDeg }) => 
         ellipsis={{ rows: 2 }}
         style={{ color: '#888', fontSize: 13, marginBottom: 10, lineHeight: 1.6 }}
       >
-        {hasBody ? bodyPreview : plainTextFromHtml(review.description || '')}
+        {hasHtmlBody ? bodyPreview : (review.description || '')}
       </Paragraph>
 
       {/* Row 3: section titles as viewpoint pills (legacy reviews only) */}
-      {!hasBody && sections.length > 0 && (
+      {!hasHtmlBody && sections.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 10 }}>
           {sections.map((sec: any, i: number) => (
             <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>

@@ -155,14 +155,39 @@ const ReviewPoolPage: React.FC = () => {
                 onCardClick={(id) => setDrawerReviewId(id)}
                 extraSlot={(review) =>
                   user?.role === 'supervisor' && review.status === 'in_progress' ? (
-                    <Button
-                      size="small"
-                      type="link"
-                      style={{ position: 'absolute', top: 14, right: 16, color: '#FF6A00', zIndex: 1 }}
-                      onClick={(e) => handleForceComplete(e, review.id)}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: 10,
+                        right: 16,
+                        zIndex: 1,
+                      }}
                     >
-                      强制结束评分
-                    </Button>
+                      <span
+                        onClick={(e) => handleForceComplete(e, review.id)}
+                        style={{
+                          fontSize: 11,
+                          color: '#bbb',
+                          cursor: 'pointer',
+                          padding: '2px 6px',
+                          borderRadius: 3,
+                          border: '1px solid #e8e8e8',
+                          background: '#fafafa',
+                          transition: 'all 0.2s',
+                          userSelect: 'none',
+                        }}
+                        onMouseEnter={e => {
+                          (e.currentTarget as HTMLElement).style.color = '#FF6A00';
+                          (e.currentTarget as HTMLElement).style.borderColor = '#FF6A00';
+                        }}
+                        onMouseLeave={e => {
+                          (e.currentTarget as HTMLElement).style.color = '#bbb';
+                          (e.currentTarget as HTMLElement).style.borderColor = '#e8e8e8';
+                        }}
+                      >
+                        结束评分
+                      </span>
+                    </div>
                   ) : null
                 }
               />

@@ -39,13 +39,22 @@ const TextAreaWithImages: React.FC<TextAreaWithImagesProps> = ({
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {
-    const items = Array.from(e.clipboardData?.items || []);
+    const dt = e.clipboardData;
+    if (!dt) return;
+
+    const items = Array.from(dt.items || []);
     const imgItem = items.find(i => i.type.startsWith('image/'));
-    if (imgItem) {
+    const hasText = dt.types.includes('text/plain') || dt.types.includes('text/html');
+
+    if (imgItem && !hasText) {
+      // Pure image paste (screenshot, copied image file) — no text in clipboard
+      // Block default and store the image
       e.preventDefault();
       const file = imgItem.getAsFile();
       if (file) addImage(file);
     }
+    // If clipboard has text (even with an image preview), let the browser
+    // paste the text normally — don't block it.
   };
 
   const handleUpload = (file: File) => {

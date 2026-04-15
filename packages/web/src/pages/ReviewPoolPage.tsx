@@ -17,8 +17,8 @@ const ESTIMATED_CARD_HEIGHT = 150;
 const VirtualReviewList: React.FC<{
   items: any[];
   onCardClick: (id: string) => void;
-  extraSlot?: (review: any) => React.ReactNode;
-}> = ({ items, onCardClick, extraSlot }) => {
+  actionSlot?: (review: any) => React.ReactNode;
+}> = ({ items, onCardClick, actionSlot }) => {
   const parentRef = useRef<HTMLDivElement>(null);
 
   const virtualizer = useVirtualizer({
@@ -47,17 +47,14 @@ const VirtualReviewList: React.FC<{
                 left: 0,
                 width: '100%',
                 transform: `translateY(${vItem.start}px)`,
-                paddingBottom: 0,
               }}
             >
-              <div style={{ position: 'relative' }}>
-                <ReviewCard
-                  review={review}
-                  onClick={() => onCardClick(review.id)}
-                  tiltDeg={TILTS[vItem.index % TILTS.length]}
-                />
-                {extraSlot?.(review)}
-              </div>
+              <ReviewCard
+                review={review}
+                onClick={() => onCardClick(review.id)}
+                tiltDeg={TILTS[vItem.index % TILTS.length]}
+                actionSlot={actionSlot?.(review)}
+              />
             </div>
           );
         })}
@@ -153,41 +150,33 @@ const ReviewPoolPage: React.FC = () => {
               <VirtualReviewList
                 items={inProgress}
                 onCardClick={(id) => setDrawerReviewId(id)}
-                extraSlot={(review) =>
+                actionSlot={(review) =>
                   user?.role === 'supervisor' && review.status === 'in_progress' ? (
-                    <div
+                    <span
+                      onClick={(e) => handleForceComplete(e, review.id)}
                       style={{
-                        position: 'absolute',
-                        bottom: 10,
-                        right: 16,
-                        zIndex: 1,
+                        fontSize: 11,
+                        color: '#bbb',
+                        cursor: 'pointer',
+                        padding: '2px 6px',
+                        borderRadius: 3,
+                        border: '1px solid #e8e8e8',
+                        background: '#fafafa',
+                        transition: 'all 0.2s',
+                        userSelect: 'none',
+                        whiteSpace: 'nowrap',
+                      }}
+                      onMouseEnter={e => {
+                        (e.currentTarget as HTMLElement).style.color = '#FF6A00';
+                        (e.currentTarget as HTMLElement).style.borderColor = '#FF6A00';
+                      }}
+                      onMouseLeave={e => {
+                        (e.currentTarget as HTMLElement).style.color = '#bbb';
+                        (e.currentTarget as HTMLElement).style.borderColor = '#e8e8e8';
                       }}
                     >
-                      <span
-                        onClick={(e) => handleForceComplete(e, review.id)}
-                        style={{
-                          fontSize: 11,
-                          color: '#bbb',
-                          cursor: 'pointer',
-                          padding: '2px 6px',
-                          borderRadius: 3,
-                          border: '1px solid #e8e8e8',
-                          background: '#fafafa',
-                          transition: 'all 0.2s',
-                          userSelect: 'none',
-                        }}
-                        onMouseEnter={e => {
-                          (e.currentTarget as HTMLElement).style.color = '#FF6A00';
-                          (e.currentTarget as HTMLElement).style.borderColor = '#FF6A00';
-                        }}
-                        onMouseLeave={e => {
-                          (e.currentTarget as HTMLElement).style.color = '#bbb';
-                          (e.currentTarget as HTMLElement).style.borderColor = '#e8e8e8';
-                        }}
-                      >
-                        结束评分
-                      </span>
-                    </div>
+                      结束评分
+                    </span>
                   ) : null
                 }
               />

@@ -44,9 +44,11 @@ interface ReviewCardProps {
   onClick: () => void;
   /** inline tilt angle (deg) — replaces nth-child CSS for virtualizer compat */
   tiltDeg?: number;
+  /** optional node rendered in Row 4 before the author+avatars (e.g. supervisor actions) */
+  actionSlot?: React.ReactNode;
 }
 
-const ReviewCard: React.FC<ReviewCardProps> = ({ review, onClick, tiltDeg }) => {
+const ReviewCard: React.FC<ReviewCardProps> = ({ review, onClick, tiltDeg, actionSlot }) => {
   const progress = review.scoringProgress;
   const sections: any[] = review.sections || [];
   // body can be HTML (old rich editor) or JSON metadata (new structured) or null
@@ -146,7 +148,7 @@ const ReviewCard: React.FC<ReviewCardProps> = ({ review, onClick, tiltDeg }) => 
         </div>
       )}
 
-      {/* Row 4: tags + author + avatars */}
+      {/* Row 4: tags | [actionSlot] author · date · avatars */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f5f5f5', paddingTop: 10 }}>
         <Space size={4} wrap>
           {(review.tags as string[])?.map((tag: string) => {
@@ -158,7 +160,12 @@ const ReviewCard: React.FC<ReviewCardProps> = ({ review, onClick, tiltDeg }) => 
             );
           })}
         </Space>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, marginLeft: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, marginLeft: 12 }}>
+          {actionSlot && (
+            <span onClick={e => e.stopPropagation()}>
+              {actionSlot}
+            </span>
+          )}
           <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
             {review.author?.name} · {dayjs(review.createdAt).format('MM/DD HH:mm')}
           </Text>

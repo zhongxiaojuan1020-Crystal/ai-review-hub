@@ -215,13 +215,9 @@ export async function sendDistributeNotification(params: {
   // ── Tags ────────────────────────────────────────────────────
   if (params.tags && params.tags.length > 0) {
     lines.push(params.tags.map(t => `#${t}`).join('  '));
-    lines.push('');
   }
 
-  // ── Heat score ──────────────────────────────────────────────
-  if (params.heatScore != null) {
-    lines.push(`🔥 综合热度 **${params.heatScore.toFixed(2)} / 5**`);
-  }
+  // Note: heat score intentionally excluded from DingTalk message
 
   const payload = {
     msgtype: 'actionCard',
@@ -229,8 +225,13 @@ export async function sendDistributeNotification(params: {
       // "短评" keyword in title ensures DingTalk custom-keyword security passes.
       title: `[短评] ${params.reviewTitle}`,
       text: lines.join('\n'),
-      btnOrientation: '0',
-      btns: [{ title: '阅读全文', actionURL: params.guestUrl }],
+      // Horizontal layout for multiple buttons
+      btnOrientation: '1',
+      btns: [
+        { title: '📖 阅读全文', actionURL: params.guestUrl },
+        { title: '👍 点赞',     actionURL: params.guestUrl },
+        { title: '💬 评论',     actionURL: params.guestUrl },
+      ],
     },
   };
   return await postToDingTalk(payload);

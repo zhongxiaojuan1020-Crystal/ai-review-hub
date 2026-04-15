@@ -96,6 +96,41 @@ export async function distributeRoutes(app: FastifyInstance) {
     return { url: `${baseUrl}/guest/${token}` };
   });
 
+  // Re-push an already-distributed review to DingTalk (supervisor only)
+  app.post('/api/reviews/:id/repush', { preValidation: [app.authenticate] }, async (request, reply) => {
+    const userRole = (request.user as any).role;
+    if (userRole !== 'supervisor') return reply.status(403).send({ error: 'Supervisor only' });
+
+    const { id } = request.params as { id: string };
+    const db = getDb();
+
+    const review = db.select().from(reviews).where(eq(reviews.id, id)).get();
+    if (!review) return reply.status(404).send({ error: 'Review not found' });
+    if (!review.distributed) return reply.status(400).send({ error: 'Review has not been distributed yet' });
+
+    // Generate a fresh guest token for the new push
+    const token = generateGuestToken(id);
+    const baseUrl = resolvePublicBaseUrl(request);
+    const guestUrl = `${baseUrl}/guest/${token}`;
+
+    const author = review.authorId
+      ? db.select().from(users).where(eq(users.id, review.authorId)).get()
+      : null;
+
+    const dtResult = await sendDistributeNotification({
+      reviewTitle: review.company,
+      authorName: author?.name || '',
+      body: review.body || undefined,
+      description: typeof review.description === 'string' ? review.description : '',
+      sections: (review.sections as any[]) || [],
+      tags: (review.tags as string[]) || [],
+      heatScore: review.heatScore,
+      guestUrl,
+    });
+
+    return { success: true, guestUrl, dingtalk: dtResult };
+  });
+
   // Distribution history
   app.get('/api/distribute/history', { preValidation: [app.authenticate] }, async () => {
     const db = getDb();

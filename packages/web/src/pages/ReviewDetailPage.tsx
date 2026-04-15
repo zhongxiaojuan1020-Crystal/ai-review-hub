@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, Typography, Tag, Space, Button, Spin, Divider, message, Popconfirm } from 'antd';
 import {
   ArrowLeftOutlined, FireOutlined, EditOutlined, DeleteOutlined,
-  SendOutlined, LinkOutlined, ClockCircleOutlined,
+  SendOutlined, LinkOutlined, ClockCircleOutlined, RedoOutlined,
 } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -24,6 +24,7 @@ const ReviewDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [distributing, setDistributing] = useState(false);
+  const [repushing, setRepushing] = useState(false);
   const navigate = useNavigate();
   const { user } = useAuthStore();
 
@@ -60,6 +61,17 @@ const ReviewDetailPage: React.FC = () => {
       message.error(err.response?.data?.error || '分发失败');
     }
     setDistributing(false);
+  };
+
+  const handleRepush = async () => {
+    setRepushing(true);
+    try {
+      await api.post(`/api/reviews/${id}/repush`);
+      message.success('已再次推送到钉钉群聊');
+    } catch (err: any) {
+      message.error(err.response?.data?.error || '推送失败');
+    }
+    setRepushing(false);
   };
 
   const handleGenerateLink = async () => {
@@ -197,6 +209,16 @@ const ReviewDetailPage: React.FC = () => {
           {isSupervisor && review.status === 'completed' && !review.distributed && (
             <Button type="primary" icon={<SendOutlined />} onClick={() => setPreviewOpen(true)}>
               分发到钉钉
+            </Button>
+          )}
+          {isSupervisor && review.distributed && (
+            <Button
+              icon={<RedoOutlined />}
+              loading={repushing}
+              onClick={handleRepush}
+              style={{ color: '#888', borderColor: '#d9d9d9' }}
+            >
+              再次推送
             </Button>
           )}
           {isSupervisor && (

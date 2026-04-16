@@ -221,8 +221,9 @@ export async function sendDistributeNotification(params: {
 
   // ── Safety: strip stray base64 data and enforce DingTalk 20KB limit ──
   let text = lines.join('\n');
-  // Remove any base64 data URIs that might have leaked through
-  text = text.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g, '[图片]');
+  // Strip [[IMG:...]] markers (legacy inline image format) and bare base64 URIs
+  text = text.replace(/\[\[IMG:[^\]]*?\]\]/g, '');
+  text = text.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g, '');
   // DingTalk actionCard.text limit is 20000 bytes; truncate if needed
   const MAX_BYTES = 18000; // leave headroom for JSON wrapper
   let byteLen = Buffer.byteLength(text, 'utf8');

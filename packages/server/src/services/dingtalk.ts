@@ -257,6 +257,12 @@ export async function sendDistributeNotification(params: {
     console.log(`[DingTalk] truncated to ${Buffer.byteLength(text, 'utf8')} bytes`);
   }
 
+  // DingTalk actionCard buttons with plain http(s) URLs often don't respond
+  // on mobile or PC clients. Wrapping the URL with the dingtalk:// scheme
+  // forces the click to open in DingTalk's built-in browser reliably.
+  const wrapUrl = (url: string) =>
+    `dingtalk://dingtalkclient/page/link?url=${encodeURIComponent(url)}&pc_slide=false`;
+
   const payload = {
     msgtype: 'actionCard',
     actionCard: {
@@ -266,9 +272,9 @@ export async function sendDistributeNotification(params: {
       // Horizontal layout for multiple buttons
       btnOrientation: '1',
       btns: [
-        { title: '📖 阅读全文', actionURL: params.guestUrl },
-        { title: '👍 点赞',     actionURL: params.guestUrl },
-        { title: '💬 评论',     actionURL: params.guestUrl },
+        { title: '📖 阅读全文', actionURL: wrapUrl(params.guestUrl) },
+        { title: '👍 点赞',     actionURL: wrapUrl(params.guestUrl) },
+        { title: '💬 评论',     actionURL: wrapUrl(params.guestUrl) },
       ],
     },
   };

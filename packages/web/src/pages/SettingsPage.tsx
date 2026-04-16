@@ -22,6 +22,7 @@ const SettingsPage: React.FC = () => {
 
   const [webhook, setWebhook] = useState('');
   const [webhookSecret, setWebhookSecret] = useState('');
+  const [dingtalkBaseUrl, setDingtalkBaseUrl] = useState('');
   const [webhookLoading, setWebhookLoading] = useState(false);
   const [webhookTesting, setWebhookTesting] = useState(false);
 
@@ -32,6 +33,7 @@ const SettingsPage: React.FC = () => {
     api.get('/api/config').then(res => {
       setWebhook(res.data.dingtalk_webhook || '');
       setWebhookSecret(res.data.dingtalk_secret || '');
+      setDingtalkBaseUrl(res.data.dingtalk_base_url || '');
     }).catch(() => {});
     loadMembers();
   }, []);
@@ -70,6 +72,7 @@ const SettingsPage: React.FC = () => {
       await api.put('/api/config', {
         dingtalk_webhook: webhook,
         dingtalk_secret: webhookSecret,
+        dingtalk_base_url: dingtalkBaseUrl.trim(),
       });
       message.success('Webhook 已保存');
     } catch {
@@ -238,6 +241,19 @@ const SettingsPage: React.FC = () => {
               value={webhookSecret}
               onChange={e => setWebhookSecret(e.target.value)}
             />
+          </div>
+          <div>
+            <Text style={{ fontSize: 12, color: '#999', display: 'block', marginBottom: 4 }}>
+              消息访问地址（可选，用于钉钉群消息中的图片和按钮链接，例：<Text code>http://1.2.3.4:3000</Text>）
+            </Text>
+            <Input
+              placeholder="http://your-ip:3000  留空则使用当前域名"
+              value={dingtalkBaseUrl}
+              onChange={e => setDingtalkBaseUrl(e.target.value)}
+            />
+            <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
+              当钉钉无法访问公网域名（如 Railway 域名被屏蔽）时，可填入服务器 IP 让群消息中的"阅读全文""图片"等链接通过 IP 访问。
+            </Text>
           </div>
           <Text type="secondary" style={{ fontSize: 12 }}>
             提示：若机器人安全设置为"自定义关键词"，请包含关键词 <Text code>短评</Text>。

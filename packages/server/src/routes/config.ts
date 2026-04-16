@@ -4,7 +4,7 @@ import { getDb } from '../db/index.js';
 import { config } from '../db/schema.js';
 import { sendTestNotification } from '../services/dingtalk.js';
 
-const ALLOWED_KEYS = ['dingtalk_webhook', 'dingtalk_secret'] as const;
+const ALLOWED_KEYS = ['dingtalk_webhook', 'dingtalk_secret', 'dingtalk_base_url'] as const;
 
 // ---- Custom tag storage (config key: 'custom_tags') -----------------------
 // Stored as JSON string: Array<{ label: string; level: 'L1'|'L2'; parent?: string }>

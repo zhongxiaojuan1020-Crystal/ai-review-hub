@@ -247,7 +247,8 @@ export async function sendDistributeNotification(params: {
   // DingTalk actionCard.text limit is 20000 bytes; truncate if needed
   const MAX_BYTES = 18000; // leave headroom for JSON wrapper
   let byteLen = Buffer.byteLength(text, 'utf8');
-  console.log(`[DingTalk] message text: ${byteLen} bytes`);
+  const imgCount = (text.match(/!\[[^\]]*\]\(/g) || []).length;
+  console.log(`[DingTalk] message text: ${byteLen} bytes, ${imgCount} image(s), baseUrl=${params.baseUrl}`);
   if (byteLen > MAX_BYTES) {
     while (Buffer.byteLength(text, 'utf8') > MAX_BYTES) {
       text = text.slice(0, -100);

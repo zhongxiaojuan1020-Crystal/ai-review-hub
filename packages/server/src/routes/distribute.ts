@@ -1,9 +1,24 @@
 import { FastifyInstance, FastifyRequest } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { getDb } from '../db/index.js';
-import { reviews, users } from '../db/schema.js';
+import { reviews, users, config as configTable } from '../db/schema.js';
 import { generateGuestToken } from '../services/guest-token.js';
 import { sendDistributeNotification } from '../services/dingtalk.js';
+
+/**
+ * Read the supervisor-configured DingTalk base URL override from DB.
+ * If set, all DingTalk message links (action buttons + image URLs) use
+ * this URL instead of the auto-resolved Railway/host URL. Useful when
+ * DingTalk can reach an IP-based URL but not the public domain.
+ */
+function getDingTalkBaseUrlOverride(): string | null {
+  const db = getDb();
+  const row = db.select().from(configTable)
+    .where(eq(configTable.key, 'dingtalk_base_url')).get();
+  const val = (row?.value as string | undefined)?.trim();
+  if (!val) return null;
+  return val.replace(/\/$/, '');
+}
 
 /**
  * Resolve the public-facing base URL for links sent out to external users.
@@ -49,9 +64,12 @@ export async function distributeRoutes(app: FastifyInstance) {
     if (!review) return reply.status(404).send({ error: 'Review not found' });
     if (review.status !== 'completed') return reply.status(400).send({ error: 'Review not completed yet' });
 
-    // Generate guest token for the review
+    // Generate guest token for the review.
+    // For DingTalk links/images, prefer supervisor-configured `dingtalk_base_url`
+    // so messages can use an IP-based URL when the public domain is unreachable.
     const token = generateGuestToken(reviewId);
-    const baseUrl = resolvePublicBaseUrl(request);
+    const dtBaseOverride = getDingTalkBaseUrlOverride();
+    const baseUrl = dtBaseOverride || resolvePublicBaseUrl(request);
     const guestUrl = `${baseUrl}/guest/${token}`;
 
     // Look up the author for the card byline
@@ -134,7 +152,8 @@ export async function distributeRoutes(app: FastifyInstance) {
 
     // Generate a fresh guest token for the new push
     const token = generateGuestToken(id);
-    const baseUrl = resolvePublicBaseUrl(request);
+    const dtBaseOverride = getDingTalkBaseUrlOverride();
+    const baseUrl = dtBaseOverride || resolvePublicBaseUrl(request);
     const guestUrl = `${baseUrl}/guest/${token}`;
 
     const author = review.authorId

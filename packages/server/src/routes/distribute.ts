@@ -71,11 +71,21 @@ export async function distributeRoutes(app: FastifyInstance) {
     const rawBody = review.body || '';
     const isHtmlBody = rawBody && !rawBody.startsWith('{');
 
-    // Strip images arrays from sections — they are base64 and would blow the 20KB limit
+    // Keep section images info (only counts, not base64 data) for image URL generation
     const sectionsForDt = ((review.sections as any[]) || []).map((s: any) => ({
       title: s.title || '',
       content: s.content || '',
+      images: Array.isArray(s.images) ? s.images : [],
     }));
+
+    // Extract description images from body JSON metadata
+    let descriptionImages: string[] = [];
+    if (!isHtmlBody && rawBody) {
+      try {
+        const parsed = JSON.parse(rawBody);
+        if (Array.isArray(parsed.descriptionImages)) descriptionImages = parsed.descriptionImages;
+      } catch { /* not JSON */ }
+    }
 
     // Send DingTalk notification and surface any errcode/errmsg to the user
     const dtResult = await sendDistributeNotification({
@@ -83,10 +93,13 @@ export async function distributeRoutes(app: FastifyInstance) {
       authorName: author?.name || '',
       body: isHtmlBody ? rawBody : undefined,
       description: typeof review.description === 'string' ? review.description : '',
+      descriptionImages,
       sections: sectionsForDt,
       tags: (review.tags as string[]) || [],
       heatScore: review.heatScore,
       guestUrl,
+      reviewId,
+      baseUrl,
     });
 
     return {
@@ -133,17 +146,29 @@ export async function distributeRoutes(app: FastifyInstance) {
     const sectionsForDt = ((review.sections as any[]) || []).map((s: any) => ({
       title: s.title || '',
       content: s.content || '',
+      images: Array.isArray(s.images) ? s.images : [],
     }));
+
+    let descriptionImages: string[] = [];
+    if (!isHtmlBody && rawBody) {
+      try {
+        const parsed = JSON.parse(rawBody);
+        if (Array.isArray(parsed.descriptionImages)) descriptionImages = parsed.descriptionImages;
+      } catch { /* not JSON */ }
+    }
 
     const dtResult = await sendDistributeNotification({
       reviewTitle: review.company,
       authorName: author?.name || '',
       body: isHtmlBody ? rawBody : undefined,
       description: typeof review.description === 'string' ? review.description : '',
+      descriptionImages,
       sections: sectionsForDt,
       tags: (review.tags as string[]) || [],
       heatScore: review.heatScore,
       guestUrl,
+      reviewId: id,
+      baseUrl,
     });
 
     return { success: true, guestUrl, dingtalk: dtResult };

@@ -167,10 +167,13 @@ export async function sendDistributeNotification(params: {
   authorName?: string;
   body?: string;         // new rich-text body (HTML)
   description?: string;  // legacy / structured description (HTML or plain)
-  sections?: { title: string; content: string }[];
+  descriptionImages?: string[];  // base64 description images
+  sections?: { title: string; content: string; images?: string[] }[];
   tags: string[];
   heatScore: number | null;
   guestUrl: string;
+  reviewId: string;      // for building public image URLs
+  baseUrl: string;       // public base URL for image serving
 }): Promise<{ ok: boolean; errcode?: number; errmsg?: string; reason?: string }> {
   const lines: string[] = [];
 
@@ -180,6 +183,8 @@ export async function sendDistributeNotification(params: {
   lines.push('');
 
   // ── Body content ────────────────────────────────────────────
+  const imgBase = `${params.baseUrl}/api/public/review-image/${params.reviewId}`;
+
   if (params.body) {
     // New rich-text (word-like editor) — convert to markdown
     lines.push(htmlToMarkdown(params.body));
@@ -195,6 +200,14 @@ export async function sendDistributeNotification(params: {
       lines.push('');
     }
 
+    // Description images
+    if (params.descriptionImages && params.descriptionImages.length > 0) {
+      params.descriptionImages.forEach((_img, i) => {
+        lines.push(`![图片](${imgBase}/desc/${i})`);
+        lines.push('');
+      });
+    }
+
     // Numbered viewpoints (matching the card's numbered circles)
     if (params.sections && params.sections.length > 0) {
       lines.push('---');
@@ -206,6 +219,13 @@ export async function sendDistributeNotification(params: {
         if (contentMd) {
           lines.push('');
           lines.push(contentMd);
+        }
+        // Section images
+        if (sec.images && sec.images.length > 0) {
+          lines.push('');
+          sec.images.forEach((_img, imgIdx) => {
+            lines.push(`![图片](${imgBase}/sec/${i}/${imgIdx})`);
+          });
         }
         lines.push('');
       });

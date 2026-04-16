@@ -15,6 +15,7 @@ import { configRoutes } from './routes/config.js';
 import { aiRoutes } from './routes/ai.js';
 import { draftRoutes } from './routes/drafts.js';
 import { favoriteRoutes } from './routes/favorites.js';
+import { publicImageRoutes } from './routes/public-images.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -59,6 +60,7 @@ await app.register(configRoutes);
 await app.register(aiRoutes);
 await app.register(draftRoutes);
 await app.register(favoriteRoutes);
+await app.register(publicImageRoutes);
 
 // Serve static frontend in production
 const publicDir = path.resolve(__dirname, '../../web/dist');

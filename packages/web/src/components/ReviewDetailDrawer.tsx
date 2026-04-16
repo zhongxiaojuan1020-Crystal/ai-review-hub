@@ -79,8 +79,13 @@ const ReviewDetailDrawer: React.FC<Props> = ({ reviewId, open, onClose, onChange
     if (!reviewId) return;
     setDistributing(true);
     try {
-      await api.post('/api/distribute', { reviewId });
-      message.success('分发成功');
+      const res = await api.post('/api/distribute', { reviewId });
+      const dt = res.data?.dingtalk;
+      if (dt && !dt.ok) {
+        message.warning(`已标记为已分发，但钉钉推送失败：${dt.errmsg || dt.reason || '未知错误'}`, 6);
+      } else {
+        message.success('分发成功，已推送到钉钉群聊');
+      }
       setPreviewOpen(false);
       fetchReview();
       onChange?.();
@@ -94,8 +99,13 @@ const ReviewDetailDrawer: React.FC<Props> = ({ reviewId, open, onClose, onChange
     if (!reviewId) return;
     setRepushing(true);
     try {
-      await api.post(`/api/reviews/${reviewId}/repush`);
-      message.success('已再次推送到钉钉群聊');
+      const res = await api.post(`/api/reviews/${reviewId}/repush`);
+      const dt = res.data?.dingtalk;
+      if (dt && !dt.ok) {
+        message.warning(`钉钉推送失败：${dt.errmsg || dt.reason || '未知错误'}`, 6);
+      } else {
+        message.success('已再次推送到钉钉群聊');
+      }
     } catch (err: any) {
       message.error(err.response?.data?.error || '推送失败');
     }

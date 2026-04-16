@@ -3,7 +3,7 @@ import {
   Card, Button, Typography, Space, message, Slider, Table, Tag, Modal,
   Form, Input, Select, Badge,
 } from 'antd';
-import { SettingOutlined, UserAddOutlined, PauseCircleOutlined, PlayCircleOutlined, BellOutlined } from '@ant-design/icons';
+import { SettingOutlined, UserAddOutlined, PauseCircleOutlined, PlayCircleOutlined, BellOutlined, KeyOutlined } from '@ant-design/icons';
 import { MAIN_DOMAINS, DOMAIN_COLOR } from '@ai-review/shared';
 import api from '../api/client';
 
@@ -19,6 +19,10 @@ const SettingsPage: React.FC = () => {
   const [addOpen, setAddOpen] = useState(false);
   const [addLoading, setAddLoading] = useState(false);
   const [form] = Form.useForm();
+
+  const [pwdModalUser, setPwdModalUser] = useState<{ id: string; name: string } | null>(null);
+  const [pwdForm] = Form.useForm();
+  const [pwdLoading, setPwdLoading] = useState(false);
 
   const [webhook, setWebhook] = useState('');
   const [webhookSecret, setWebhookSecret] = useState('');
@@ -102,8 +106,14 @@ const SettingsPage: React.FC = () => {
     try {
       const values = await form.validateFields();
       setAddLoading(true);
-      await api.post('/api/users', values);
-      message.success('成员已添加');
+      const { password, ...userFields } = values;
+      // Step 1: create the user record
+      const res = await api.post('/api/users', userFields);
+      // Step 2: set the initial password so they can log in right away
+      if (password && res.data?.id) {
+        await api.put(`/api/users/${res.data.id}/password`, { password });
+      }
+      message.success('成员已添加，密码已设置');
       setAddOpen(false);
       form.resetFields();
       loadMembers();
@@ -111,6 +121,21 @@ const SettingsPage: React.FC = () => {
       if (err?.response?.data?.error) message.error(err.response.data.error);
     }
     setAddLoading(false);
+  };
+
+  const handleResetPassword = async () => {
+    if (!pwdModalUser) return;
+    try {
+      const values = await pwdForm.validateFields();
+      setPwdLoading(true);
+      await api.put(`/api/users/${pwdModalUser.id}/password`, { password: values.password });
+      message.success(`${pwdModalUser.name} 的密码已重置`);
+      setPwdModalUser(null);
+      pwdForm.resetFields();
+    } catch (err: any) {
+      if (err?.response?.data?.error) message.error(err.response.data.error);
+    }
+    setPwdLoading(false);
   };
 
   const domainLabel = (weights: any) => {
@@ -159,17 +184,27 @@ const SettingsPage: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      width: 100,
+      width: 180,
       render: (r: any) => (
         r.role !== 'supervisor' ? (
-          <Button
-            type="text"
-            size="small"
-            icon={r.isActive ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
-            onClick={() => handleToggle(r.id)}
-          >
-            {r.isActive ? '停用' : '恢复'}
-          </Button>
+          <Space size={4}>
+            <Button
+              type="text"
+              size="small"
+              icon={<KeyOutlined />}
+              onClick={() => { setPwdModalUser({ id: r.id, name: r.name }); pwdForm.resetFields(); }}
+            >
+              重置密码
+            </Button>
+            <Button
+              type="text"
+              size="small"
+              icon={r.isActive ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
+              onClick={() => handleToggle(r.id)}
+            >
+              {r.isActive ? '停用' : '恢复'}
+            </Button>
+          </Space>
         ) : <Text type="secondary" style={{ fontSize: 12 }}>—</Text>
       ),
     },
@@ -311,6 +346,17 @@ const SettingsPage: React.FC = () => {
           <Form.Item name="dingtalkUserId" label="钉钉账号 ID" rules={[{ required: true, message: '请输入钉钉账号' }]}>
             <Input placeholder="钉钉 userid" />
           </Form.Item>
+          <Form.Item
+            name="password"
+            label="初始登录密码"
+            rules={[
+              { required: true, message: '请为新成员设置初始密码' },
+              { min: 6, message: '密码至少 6 位' },
+            ]}
+            extra="成员用此密码首次登录后建议在个人设置中自行修改"
+          >
+            <Input.Password placeholder="至少 6 位" />
+          </Form.Item>
           <Form.Item name="role" label="角色" initialValue="member">
             <Select>
               <Select.Option value="member">成员</Select.Option>
@@ -331,6 +377,34 @@ const SettingsPage: React.FC = () => {
               ))}
             </Select>
           </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Reset password modal */}
+      <Modal
+        open={!!pwdModalUser}
+        title={pwdModalUser ? `重置 ${pwdModalUser.name} 的登录密码` : ''}
+        onCancel={() => { setPwdModalUser(null); pwdForm.resetFields(); }}
+        onOk={handleResetPassword}
+        okText="保存新密码"
+        cancelText="取消"
+        confirmLoading={pwdLoading}
+        destroyOnClose
+      >
+        <Form form={pwdForm} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item
+            name="password"
+            label="新密码"
+            rules={[
+              { required: true, message: '请输入新密码' },
+              { min: 6, message: '密码至少 6 位' },
+            ]}
+          >
+            <Input.Password placeholder="至少 6 位" autoFocus />
+          </Form.Item>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            重置后请将新密码通过安全渠道告知该成员。
+          </Text>
         </Form>
       </Modal>
     </div>

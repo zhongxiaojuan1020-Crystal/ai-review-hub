@@ -66,13 +66,24 @@ export async function distributeRoutes(app: FastifyInstance) {
       updatedAt: new Date().toISOString(),
     }).where(eq(reviews.id, reviewId)).run();
 
+    // Determine if body is real HTML or JSON metadata (descriptionImages).
+    // JSON metadata starts with '{' and must not be sent as HTML content.
+    const rawBody = review.body || '';
+    const isHtmlBody = rawBody && !rawBody.startsWith('{');
+
+    // Strip images arrays from sections — they are base64 and would blow the 20KB limit
+    const sectionsForDt = ((review.sections as any[]) || []).map((s: any) => ({
+      title: s.title || '',
+      content: s.content || '',
+    }));
+
     // Send DingTalk notification and surface any errcode/errmsg to the user
     const dtResult = await sendDistributeNotification({
       reviewTitle: review.company,
       authorName: author?.name || '',
-      body: review.body || undefined,
+      body: isHtmlBody ? rawBody : undefined,
       description: typeof review.description === 'string' ? review.description : '',
-      sections: (review.sections as any[]) || [],
+      sections: sectionsForDt,
       tags: (review.tags as string[]) || [],
       heatScore: review.heatScore,
       guestUrl,
@@ -117,12 +128,19 @@ export async function distributeRoutes(app: FastifyInstance) {
       ? db.select().from(users).where(eq(users.id, review.authorId)).get()
       : null;
 
+    const rawBody = review.body || '';
+    const isHtmlBody = rawBody && !rawBody.startsWith('{');
+    const sectionsForDt = ((review.sections as any[]) || []).map((s: any) => ({
+      title: s.title || '',
+      content: s.content || '',
+    }));
+
     const dtResult = await sendDistributeNotification({
       reviewTitle: review.company,
       authorName: author?.name || '',
-      body: review.body || undefined,
+      body: isHtmlBody ? rawBody : undefined,
       description: typeof review.description === 'string' ? review.description : '',
-      sections: (review.sections as any[]) || [],
+      sections: sectionsForDt,
       tags: (review.tags as string[]) || [],
       heatScore: review.heatScore,
       guestUrl,

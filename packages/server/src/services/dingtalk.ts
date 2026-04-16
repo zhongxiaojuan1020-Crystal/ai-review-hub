@@ -219,12 +219,27 @@ export async function sendDistributeNotification(params: {
 
   // Note: heat score intentionally excluded from DingTalk message
 
+  // ── Safety: strip stray base64 data and enforce DingTalk 20KB limit ──
+  let text = lines.join('\n');
+  // Remove any base64 data URIs that might have leaked through
+  text = text.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g, '[图片]');
+  // DingTalk actionCard.text limit is 20000 bytes; truncate if needed
+  const MAX_BYTES = 18000; // leave headroom for JSON wrapper
+  const byteLen = Buffer.byteLength(text, 'utf8');
+  if (byteLen > MAX_BYTES) {
+    // Truncate character-by-character until within limit
+    while (Buffer.byteLength(text, 'utf8') > MAX_BYTES) {
+      text = text.slice(0, -100);
+    }
+    text += '\n\n…… 内容过长已截断，请点击"阅读全文"查看完整版';
+  }
+
   const payload = {
     msgtype: 'actionCard',
     actionCard: {
       // "短评" keyword in title ensures DingTalk custom-keyword security passes.
       title: `[短评] ${params.reviewTitle}`,
-      text: lines.join('\n'),
+      text,
       // Horizontal layout for multiple buttons
       btnOrientation: '1',
       btns: [

@@ -178,7 +178,9 @@ export async function sendDistributeNotification(params: {
   const lines: string[] = [];
 
   // ── Title ───────────────────────────────────────────────────
-  lines.push(`### 【短评】${params.reviewTitle}`);
+  // Note: don't repeat "【短评】" here — the actionCard outer title already
+  // carries "[短评]" for DingTalk custom-keyword security compliance.
+  lines.push(`### ${params.reviewTitle}`);
   if (params.authorName) lines.push(`*by ${params.authorName}*`);
   lines.push('');
 

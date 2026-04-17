@@ -41,6 +41,16 @@ const FontSizeExtension = Extension.create({
 const CustomImage = ImageExt.extend({
   inline: true,
   group: 'inline',
+  // CRITICAL: allowBase64 must be true, otherwise TipTap's parseHTML uses the
+  // selector `img[src]:not([src^="data:"])` and silently drops every base64
+  // embedded image when loading saved content. This made images "disappear"
+  // whenever a user reopened a published review for editing.
+  addOptions() {
+    return {
+      ...this.parent?.(),
+      allowBase64: true,
+    };
+  },
   addAttributes() {
     return {
       ...this.parent?.(),

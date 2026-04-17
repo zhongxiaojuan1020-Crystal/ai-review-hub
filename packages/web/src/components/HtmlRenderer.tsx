@@ -1,4 +1,5 @@
 import React from 'react';
+import './RichTextEditor.css'; // provides .img-size-large/medium/small
 
 /**
  * Render rich-text HTML body from the new editor.

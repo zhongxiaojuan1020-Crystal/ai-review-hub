@@ -1,0 +1,93 @@
+/* ── Editor container ──────────────────────────────────────────────── */
+.rich-editor-wrapper {
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.rich-editor-wrapper:focus-within {
+  border-color: #ff6900;
+  box-shadow: 0 0 0 2px rgba(255, 105, 0, 0.08);
+}
+
+/* ── Toolbar ────────────────────────────────────────────────────────── */
+.rich-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 5px 8px;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fafafa;
+  flex-wrap: wrap;
+  min-height: 38px;
+}
+
+/* ── Content area ───────────────────────────────────────────────────── */
+.rich-editor-content {
+  padding: 10px 12px;
+  cursor: text;
+}
+.rich-editor-content .ProseMirror {
+  outline: none;
+  line-height: 1.8;
+  font-size: 14px;
+  color: #333;
+  word-break: break-word;
+}
+.rich-editor-content .ProseMirror p {
+  margin: 0 0 0.4em;
+}
+.rich-editor-content .ProseMirror p:last-child {
+  margin-bottom: 0;
+}
+.rich-editor-content .ProseMirror ul,
+.rich-editor-content .ProseMirror ol {
+  padding-left: 1.4em;
+  margin: 0.3em 0;
+}
+/* Placeholder */
+.rich-editor-content .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #bbb;
+  pointer-events: none;
+  height: 0;
+}
+/* Selected image ring */
+.rich-editor-content .ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid #ff6900;
+  outline-offset: 2px;
+}
+
+/* ── Image size classes ─────────────────────────────────────────────── */
+/* These classes are applied both inside the editor and in display views */
+
+.img-size-large {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  margin: 6px 0 !important;
+  border-radius: 6px;
+}
+
+.img-size-medium {
+  display: inline-block !important;
+  width: calc(50% - 4px) !important;
+  max-width: calc(50% - 4px) !important;
+  height: auto !important;
+  margin: 3px 2px !important;
+  vertical-align: top !important;
+  border-radius: 6px;
+}
+
+.img-size-small {
+  display: inline-block !important;
+  width: calc(33.33% - 6px) !important;
+  max-width: calc(33.33% - 6px) !important;
+  height: auto !important;
+  margin: 3px 3px !important;
+  vertical-align: top !important;
+  border-radius: 6px;
+}

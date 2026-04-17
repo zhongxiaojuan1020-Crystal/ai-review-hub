@@ -123,7 +123,7 @@ const ReviewCard: React.FC<ReviewCardProps> = ({ review, onClick, tiltDeg, actio
         ellipsis={{ rows: 2 }}
         style={{ color: '#888', fontSize: 13, marginBottom: 10, lineHeight: 1.6 }}
       >
-        {hasHtmlBody ? bodyPreview : (review.description || '')}
+        {hasHtmlBody ? bodyPreview : plainTextFromHtml(review.description || '')}
       </Paragraph>
 
       {/* Row 3: section titles as viewpoint pills (legacy reviews only) */}

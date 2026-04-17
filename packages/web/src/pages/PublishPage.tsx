@@ -204,26 +204,29 @@ const PublishPage: React.FC = () => {
   };
 
   const handleAiFormat = async () => {
-    if (!aiRawText.trim() || aiRawText.trim().length < 10) {
-      message.warning('请先粘贴原始材料（至少10字）'); return;
+    if (!aiRawText || stripHtml(aiRawText).trim().length === 0) {
+      message.warning('请先粘贴原始材料'); return;
     }
     setAiLoading(true);
     try {
       const res = await api.post('/api/ai/format', { rawText: aiRawText });
-      const { title, description: aiDesc, sections: aiSections, suggestedTags } = res.data;
+      const { title, description: aiDesc, sections: aiSections, _fallback, _reason } = res.data;
       if (title) form.setFieldValue('company', `【短评】${title}`);
-      if (aiDesc) setDescription(aiDesc);
-      if (Array.isArray(aiSections) && aiSections.length > 0) {
-        setSections(aiSections.map((s: any) => ({
-          title: s.title || '',
-          content: s.content || '',
-        })));
+      if (typeof aiDesc === 'string') setDescription(aiDesc);
+      if (Array.isArray(aiSections)) {
+        setSections(
+          aiSections.length > 0
+            ? aiSections.map((s: any) => ({
+                title: s.title || '',
+                content: s.content || '',
+              }))
+            : [{ title: '', content: '' }]
+        );
       }
       // Force editors to remount with AI-filled content
       setResetKey(k => k + 1);
-      if (Array.isArray(suggestedTags) && suggestedTags.length > 0) {
-        setSelectedTags(suggestedTags);
-        message.success(`AI 已生成内容，推荐标签：${suggestedTags.join('、')}`);
+      if (_fallback) {
+        message.warning(_reason || 'AI 解析失败，已填入原文供你手动整理');
       } else {
         message.success('AI 排版完成，请检查并微调内容');
       }
@@ -322,25 +325,27 @@ const PublishPage: React.FC = () => {
             children: (
               <div style={{ paddingBottom: 4 }}>
                 <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
-                  将文章摘录、会议记录、要点笔记等贴入下方，AI 自动提炼标题、摘要和观点列表。
+                  将已经写好的短评贴入下方（支持富文本、图片），AI 会拆解到标题、摘要、观点三类字段，原文一字不改。
                 </Text>
-                <TextArea
-                  value={aiRawText}
-                  onChange={e => setAiRawText(e.target.value)}
-                  placeholder="粘贴原始材料..."
-                  autoSize={{ minRows: 5, maxRows: 14 }}
-                  style={{ fontSize: 12, marginBottom: 12, background: '#FDFCF8', borderColor: '#D4BF98' }}
-                />
+                <div style={{ marginBottom: 12, background: '#FDFCF8' }}>
+                  <RichTextEditor
+                    key={`ai-input-${resetKey}`}
+                    initialContent={aiRawText}
+                    onChange={setAiRawText}
+                    placeholder="粘贴原始材料（支持富文本和图片）..."
+                    minHeight={140}
+                  />
+                </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text style={{ fontSize: 11, color: '#A8906C' }}>
-                    {aiRawText.length > 0 ? `${aiRawText.length} 字` : ''}
+                    {stripHtml(aiRawText).length > 0 ? `${stripHtml(aiRawText).length} 字` : ''}
                   </Text>
                   <Button
                     type="primary"
                     icon={aiLoading ? <LoadingOutlined /> : <ThunderboltOutlined />}
                     onClick={handleAiFormat}
                     loading={aiLoading}
-                    disabled={aiRawText.trim().length < 10}
+                    disabled={stripHtml(aiRawText).trim().length === 0}
                   >
                     {aiLoading ? 'AI 正在整理...' : '一键生成短评'}
                   </Button>

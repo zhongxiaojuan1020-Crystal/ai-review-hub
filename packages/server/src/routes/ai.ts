@@ -1,36 +1,157 @@
 import { FastifyInstance } from 'fastify';
 
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
+/**
+ * AI 一键排版：把作者贴入的已写好的短评原文，纯机械地拆解到结构化字段。
+ * - 不总结、不改写、不润色、不翻译
+ * - 保留原文富文本（颜色等 style 保留；字体、字号清洗为系统默认）
+ * - base64 图片用占位符方式来回传递，防止被大模型截断/篡改
+ */
 
-const FORMAT_PROMPT = `你是一位AI技术战略分析师，为内部团队撰写「短评」——简洁、有观点的技术动态评述。
+const SYSTEM_PROMPT = `你是「AI 短评圈」的排版助手。你的唯一任务是：把作者已经写好的短评文本，原样拆解到结构化字段里。
 
-请将以下原始材料整理为规范的短评格式。严格返回JSON对象，不要有任何其他文字或markdown代码块。
+# ⚠️ 核心原则（最重要）
+你是"切割刀"，不是"编辑器"。
+- 绝对不要总结、概括、改写、润色、翻译原文的任何一句话
+- 绝对不要补充原文没有的内容
+- 绝对不要删减原文内容（除明显的结构分隔符）
+- 原文是什么字就输出什么字，标点、语气词、口头禅都保留
+- 如果原文只有一段话，就只输出一段话；不要硬拆成多个 sections
+- 如果原文没有明显的标题，就从首句截取前 15–20 字，不要自己创作
 
-返回格式：
+# 图片占位符
+原文中图片已被替换为 [[IMG_PLACEHOLDER_N]]（N 为数字）的占位符。
+请**原样保留**这些占位符，不要删除、改写、合并或重命名。
+系统会在返回后把它们还原为原图。
+
+# 你要识别的边界信号
+
+## 标题（title）
+- 通常在最开头、单独一行、较短（<30 字）
+- 可能有「标题：」「《》」「【】」「#」等标记
+- 如果识别不出，就从首句截取前 15–20 字
+
+## 导语（description）
+- 标题之后、第一个小标题之前的段落
+- 如果原文没有明显的导语，description 返回空字符串 ""
+
+## 小节（sections）
+识别信号：
+- Markdown ##、### 开头
+- 「1.」「2.」「一、」「二、」「①②③」等序号
+- 加粗独占一行的短句（可能是小标题）
+- 空行分隔的明显段落块
+- 「亮点：」「观点：」「点评：」等引导词
+
+### 高频模式："序号 + 首句即小标题"
+作者常写成：
+
+  观点一：Claude 4.5 在编码能力上领先。具体来看，在 SWE-Bench 上...
+  └──── 小标题 ────┘  └─────── 正文 ─────────┘
+
+处理：
+- 如果某段以「观点N/亮点N/要点N/第N点/①②③/一、二、三、」等序号引导词开头，跟「：」或「，」
+- 则序号后到第一个句号/感叹号/问号前的那句话 = section.title
+- 其后内容 = section.content
+- section.title 中**不要**包含「观点一：」这种引导前缀
+
+### 完全没有结构时
+如果作者贴的是一整段没有分节的文字：
+- description 放全部内容
+- sections 返回空数组 []
+
+# HTML 处理规则
+- 如果输入是纯文本，用 <p> 包裹段落，换行用 <br>
+- 如果输入已经是富文本/HTML，**原样保留** <strong>、<em>、<u>、<ul>、<li>、<ol>、<img>、<p>、<br>、<h1>~<h6>、<span style="color:...">、<span style="background-color:...">、<span style="text-decoration:..."> 等
+- 已被占位符替代的图片保留占位符即可
+- 小标题文字不要重复出现在 content 里（已经在 section.title 中）
+
+# 输出格式
+严格返回下面这个 JSON（不要 markdown 代码块、不要前后任何文字）：
+
 {
-  "title": "标题（不含【短评】前缀，20字以内，突出核心价值）",
-  "description": "一句话摘要（30-60字，概括核心事件或核心价值，直接出现在卡片摘要位置）",
+  "title": "标题文字",
+  "description": "导语 HTML",
   "sections": [
-    { "title": "观点/亮点标题（15字以内）", "content": "该观点的详细说明（50-150字，客观具体）" },
-    { "title": "...", "content": "..." }
-  ],
-  "suggestedTags": ["从以下选择1-3个最相关标签：AI Coding、基础模型、AI应用、具身智能、其他"]
+    { "title": "小标题文字", "content": "正文 HTML" }
+  ]
 }
 
-要求：
-- sections 数量3-5个，每个代表一个独立观点或技术亮点
-- 每个section.title要简洁有力，会显示为卡片上的编号圆圈要点
-- description是整体摘要，不重复sections内容
-- 风格：客观、专业、有战略视角，避免空话
-
-原始材料：
-`;
+# 禁忌
+- ❌ 不要"精炼"句子
+- ❌ 不要"补充背景"
+- ❌ 不要"调整逻辑"
+- ❌ 不要"统一风格"
+- ❌ 不要输出 suggestedTags 字段（作者自己选）
+- ❌ 不要在 JSON 之外输出任何解释/说明/道歉
+- ❌ 不要输出 markdown 代码块包裹 JSON`;
 
 interface FormatResult {
   title: string;
   description: string;
   sections: { title: string; content: string }[];
-  suggestedTags: string[];
+}
+
+/**
+ * 把 HTML 中的 <img src="data:..."> 替换成占位符，
+ * 返回占位符化的 HTML 和原始图片 src 数组。
+ */
+function extractImagesToPlaceholders(html: string): { placeholderHtml: string; images: string[] } {
+  const images: string[] = [];
+  const placeholderHtml = html.replace(
+    /<img\b[^>]*\bsrc=(['"])(data:[^'"]+)\1[^>]*>/gi,
+    (_match, _quote, src) => {
+      const idx = images.length;
+      images.push(src);
+      return `[[IMG_PLACEHOLDER_${idx}]]`;
+    }
+  );
+  return { placeholderHtml, images };
+}
+
+/**
+ * 还原占位符为 <img> 标签（使用原始 src）。
+ */
+function restorePlaceholders(text: string, images: string[]): string {
+  return text.replace(/\[\[IMG_PLACEHOLDER_(\d+)\]\]/g, (match, idxStr) => {
+    const idx = parseInt(idxStr, 10);
+    if (Number.isNaN(idx) || idx < 0 || idx >= images.length) return match;
+    return `<img src="${images[idx]}" />`;
+  });
+}
+
+/**
+ * 清洗 style 属性中的字体与字号设置（让系统默认值生效），
+ * 保留颜色、背景、文字装饰等其它 style。
+ */
+function cleanStyleFonts(html: string): string {
+  return html.replace(/\bstyle\s*=\s*(['"])([^'"]*)\1/gi, (_m, quote, styleContent) => {
+    const cleaned = styleContent
+      .split(';')
+      .map((decl: string) => decl.trim())
+      .filter((decl: string) => {
+        if (!decl) return false;
+        const lowered = decl.toLowerCase();
+        if (lowered.startsWith('font-family')) return false;
+        if (lowered.startsWith('font-size')) return false;
+        if (lowered.startsWith('line-height')) return false;
+        if (lowered.startsWith('font:')) return false; // shorthand 一般含字号
+        return true;
+      })
+      .join('; ');
+    if (!cleaned) return ''; // style 全被清空，整个属性去掉
+    return `style=${quote}${cleaned}${quote}`;
+  });
+}
+
+/**
+ * 去掉危险标签：<script>、<style>、on* 事件属性。
+ */
+function stripDangerous(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, '');
 }
 
 export async function aiRoutes(app: FastifyInstance) {
@@ -38,77 +159,120 @@ export async function aiRoutes(app: FastifyInstance) {
     '/api/ai/format',
     { preValidation: [app.authenticate] },
     async (request, reply) => {
-      const apiKey = process.env.ANTHROPIC_API_KEY;
-      if (!apiKey) {
+      const apiKey = process.env.LLM_API_KEY;
+      const baseUrl = process.env.LLM_BASE_URL;
+      const model = process.env.LLM_MODEL;
+
+      if (!apiKey || !baseUrl || !model) {
         return reply.status(503).send({
-          error: '未配置 ANTHROPIC_API_KEY，请在 Railway 环境变量中添加',
+          error: '未配置 LLM_API_KEY / LLM_BASE_URL / LLM_MODEL 环境变量',
         });
       }
 
       const { rawText } = request.body as { rawText?: string };
-      if (!rawText || rawText.trim().length < 10) {
-        return reply.status(400).send({ error: '请提供足够的原始内容（至少10字）' });
+      if (!rawText || !rawText.trim()) {
+        return reply.status(400).send({ error: '请提供原始内容' });
       }
 
-      const prompt = FORMAT_PROMPT + rawText.trim();
+      // 1) 预处理：去危险标签 → 提取 base64 图片 → 清洗字体/字号 style
+      const safeInput = stripDangerous(rawText);
+      const { placeholderHtml, images } = extractImagesToPlaceholders(safeInput);
+      const cleanedInput = cleanStyleFonts(placeholderHtml);
 
-      let anthropicRes: Response;
+      // 2) 组装 OpenAI 兼容协议请求
+      const endpoint = baseUrl.replace(/\/+$/, '') + '/chat/completions';
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 30_000);
+
+      let llmRes: Response;
       try {
-        anthropicRes = await fetch(ANTHROPIC_API_URL, {
+        llmRes = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
+            Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            model: 'claude-3-5-haiku-20241022',
-            max_tokens: 2048,
-            messages: [{ role: 'user', content: prompt }],
+            model,
+            temperature: 0.2,
+            messages: [
+              { role: 'system', content: SYSTEM_PROMPT },
+              { role: 'user', content: cleanedInput },
+            ],
           }),
+          signal: controller.signal,
         });
       } catch (err: any) {
+        clearTimeout(timer);
+        const isAbort = err?.name === 'AbortError';
         console.error('[AI] fetch failed:', err?.message);
-        return reply.status(502).send({ error: 'AI 服务请求失败，请稍后重试' });
+        return reply.status(502).send({
+          error: isAbort ? 'AI 服务超时（30s），请稍后重试' : 'AI 服务请求失败，请稍后重试',
+        });
       }
+      clearTimeout(timer);
 
-      if (!anthropicRes.ok) {
-        const errText = await anthropicRes.text();
-        console.error('[AI] API error:', anthropicRes.status, errText);
+      if (!llmRes.ok) {
+        const errText = await llmRes.text();
+        console.error('[AI] API error:', llmRes.status, errText);
         let detail = '';
         try {
           const errJson = JSON.parse(errText);
-          detail = errJson?.error?.message || errText.slice(0, 200);
+          detail = errJson?.error?.message || errJson?.message || errText.slice(0, 200);
         } catch {
           detail = errText.slice(0, 200);
         }
-        return reply.status(502).send({ error: `AI 服务返回错误 ${anthropicRes.status}: ${detail}` });
+        return reply.status(502).send({ error: `AI 服务返回错误 ${llmRes.status}: ${detail}` });
       }
 
-      const data = await anthropicRes.json() as any;
-      const rawContent: string = data?.content?.[0]?.text || '';
+      const data = (await llmRes.json()) as any;
+      const rawContent: string = data?.choices?.[0]?.message?.content || '';
 
+      // 3) 解析 JSON（兼容模型返回时包裹 ```json 代码块的情况）
       let result: FormatResult;
       try {
-        const cleaned = rawContent
+        let cleaned = rawContent.trim();
+        // 去掉 markdown 代码块围栏
+        cleaned = cleaned
           .replace(/^```json\s*/i, '')
           .replace(/^```\s*/i, '')
           .replace(/```\s*$/, '')
           .trim();
+        // 如果首尾不是 { }，尝试提取中间的 JSON 片段
+        if (!cleaned.startsWith('{')) {
+          const m = cleaned.match(/\{[\s\S]*\}/);
+          if (m) cleaned = m[0];
+        }
         result = JSON.parse(cleaned);
       } catch {
         console.error('[AI] JSON parse failed. Raw:', rawContent.slice(0, 300));
-        return reply.status(502).send({ error: 'AI 返回内容解析失败，请重试' });
+        // fallback：把原内容整个丢到 description，让作者自己整理
+        return {
+          title: '',
+          description: rawText,
+          sections: [],
+          _fallback: true,
+          _reason: 'AI 返回无法解析，已将原内容填入摘要',
+        };
       }
 
-      return {
-        title: (result.title || '').trim(),
-        description: (result.description || '').trim(),
+      // 4) 后处理：style 再清洗一遍 + 还原图片占位符
+      const postProcess = (s: string) => restorePlaceholders(cleanStyleFonts(String(s || '')), images);
+
+      const finalResult: FormatResult = {
+        title: String(result.title || '').trim(),
+        description: postProcess(result.description || '').trim(),
         sections: Array.isArray(result.sections)
-          ? result.sections.map(s => ({ title: String(s.title || '').trim(), content: String(s.content || '').trim() }))
+          ? result.sections
+              .filter((s) => s && (s.title || s.content))
+              .map((s) => ({
+                title: String(s.title || '').trim(),
+                content: postProcess(s.content || '').trim(),
+              }))
           : [],
-        suggestedTags: Array.isArray(result.suggestedTags) ? result.suggestedTags : [],
       };
+
+      return finalResult;
     }
   );
 }

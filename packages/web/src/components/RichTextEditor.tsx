@@ -61,78 +61,140 @@ const CustomImage = ImageExt.extend({
 });
 
 // ─── Paste helpers ───────────────────────────────────────────────────────────
-// Strip font-family / font-size / line-height from inline style attrs so
-// pasted content uses our default typography. Keep color/background/etc.
-function stripFontStyles(html: string): string {
-  return html.replace(/style\s*=\s*(['"])([^'"]*)\1/gi, (_m, quote, styleContent) => {
-    const cleaned = (styleContent as string)
-      .split(';')
-      .map((d: string) => d.trim())
-      .filter((d: string) => {
-        if (!d) return false;
-        const lc = d.toLowerCase();
-        return !lc.startsWith('font-family')
-            && !lc.startsWith('font-size')
-            && !lc.startsWith('line-height')
-            && !lc.startsWith('font:');
-      })
-      .join('; ');
-    if (!cleaned) return '';
-    return `style=${quote}${cleaned}${quote}`;
-  });
+
+// Bullet-like characters at the very start (after optional whitespace).
+const BULLET_RE = /^[\s\u00A0]*[•●▪▸▶►·・○◆■◦‣⁃∙]/;
+
+// Tags whose content is just passed through — they're not part of TipTap's
+// schema but their children usually are. Found in WeChat / DingTalk / Notion
+// exports as structural wrappers.
+const UNWRAP_TAGS = [
+  'section', 'article', 'header', 'footer', 'main', 'aside', 'nav',
+  'figure', 'figcaption', 'div', 'font', 'o:p',
+];
+
+// Strip font-family / font-size / line-height from any element with a style
+// attr. We keep color / background / text-decoration etc.
+function stripFontStylesOnEl(el: Element) {
+  const style = el.getAttribute('style') || '';
+  if (!style) return;
+  const cleaned = style
+    .split(';')
+    .map((d) => d.trim())
+    .filter((d) => {
+      if (!d) return false;
+      const lc = d.toLowerCase();
+      return !lc.startsWith('font-family')
+          && !lc.startsWith('font-size')
+          && !lc.startsWith('line-height')
+          && !lc.startsWith('font:');
+    })
+    .join('; ');
+  if (cleaned) el.setAttribute('style', cleaned);
+  else el.removeAttribute('style');
 }
 
-// Detect bullet-like characters at the start of a string
-const BULLET_RE = /^[\s\u00A0]*[•●▪▸▶►·・○◆■]/;
-
-// Transform pasted HTML to maximize fidelity:
-// 1) unwrap <section> / <article> wrappers (WeChat-style articles)
-// 2) convert consecutive "• xxx" paragraphs into a proper <ul><li> list
-// 3) strip font-family / font-size / line-height
-function normalizePastedHTML(html: string): string {
-  let out = html;
-
-  // Unwrap section/article tags (keep contents)
-  out = out.replace(/<section\b[^>]*>/gi, '').replace(/<\/section>/gi, '');
-  out = out.replace(/<article\b[^>]*>/gi, '').replace(/<\/article>/gi, '');
-
-  // Strip font styles
-  out = stripFontStyles(out);
-
-  // Bullet paragraphs → <ul><li>
-  try {
-    const doc = new DOMParser().parseFromString(`<div id="__root">${out}</div>`, 'text/html');
-    const root = doc.getElementById('__root');
-    if (root) {
-      const allPs = Array.from(root.querySelectorAll('p')) as HTMLElement[];
-      let currentList: HTMLUListElement | null = null;
-      for (let i = 0; i < allPs.length; i++) {
-        const p = allPs[i];
-        const txt = (p.textContent || '').trim();
-        const isBullet = BULLET_RE.test(txt);
-        if (isBullet) {
-          const inner = p.innerHTML.replace(/^[\s\u00A0]*[•●▪▸▶►·・○◆■][\s\u00A0]*/, '');
-          const li = doc.createElement('li');
-          li.innerHTML = inner;
-          const prev = allPs[i - 1];
-          const prevIsBullet = !!prev && BULLET_RE.test((prev.textContent || '').trim());
-          if (!prevIsBullet || !currentList) {
-            currentList = doc.createElement('ul');
-            p.parentNode?.insertBefore(currentList, p);
-          }
-          currentList.appendChild(li);
-          p.remove();
-        } else {
-          currentList = null;
-        }
-      }
-      out = root.innerHTML;
+// Walk first non-empty text node under `node` and strip leading bullet char.
+function stripBulletFromFirstText(node: Node) {
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+  let t = walker.nextNode();
+  while (t) {
+    const text = t.textContent || '';
+    if (text.trim()) {
+      t.textContent = text.replace(/^[\s\u00A0]*[•●▪▸▶►·・○◆■◦‣⁃∙][\s\u00A0]*/, '');
+      return;
     }
+    t = walker.nextNode();
+  }
+}
+
+// Normalize clipboard HTML so TipTap's schema-based parser preserves more of
+// the source. Handles:
+//  - Unknown wrappers (<section>, <div>, <font>, etc.) — unwrapped
+//  - Inline font-family / font-size / line-height — stripped
+//  - Paragraphs whose text starts with bullet chars — wrapped into <ul><li>
+//  - Orphan <li> elements — grouped into <ul>
+function normalizePastedHTML(html: string): string {
+  let doc: Document;
+  try {
+    doc = new DOMParser().parseFromString(`<div id="__root">${html}</div>`, 'text/html');
   } catch {
-    // DOMParser not available or parse failed — return as-is
+    return html;
+  }
+  const root = doc.getElementById('__root');
+  if (!root) return html;
+
+  // ① Unwrap structural wrappers repeatedly until none remain.
+  const unwrapOnce = () => {
+    let did = false;
+    for (const tag of UNWRAP_TAGS) {
+      const els = Array.from(root.getElementsByTagName(tag));
+      for (const el of els) {
+        const parent = el.parentNode;
+        if (!parent) continue;
+        while (el.firstChild) parent.insertBefore(el.firstChild, el);
+        parent.removeChild(el);
+        did = true;
+      }
+    }
+    return did;
+  };
+  let guard = 0;
+  while (unwrapOnce() && guard++ < 10) { /* keep unwrapping nested wrappers */ }
+
+  // ② Strip font-family/size/line-height from every [style] element
+  for (const el of Array.from(root.querySelectorAll('[style]'))) {
+    stripFontStylesOnEl(el);
   }
 
-  return out;
+  // ③ Convert direct children whose text starts with a bullet char into <li>
+  //    inside a contiguous <ul>.
+  const children = Array.from(root.children);
+  let currentList: HTMLUListElement | null = null;
+  for (const child of children) {
+    const txt = (child.textContent || '').trim();
+    const isBullet = BULLET_RE.test(txt);
+    if (isBullet) {
+      stripBulletFromFirstText(child);
+      const li = doc.createElement('li');
+      // Wrap inner content in <p> so TipTap's <li> schema (which expects
+      // block children) accepts it cleanly.
+      const p = doc.createElement('p');
+      while (child.firstChild) p.appendChild(child.firstChild);
+      li.appendChild(p);
+      if (!currentList) {
+        currentList = doc.createElement('ul');
+        child.parentNode?.insertBefore(currentList, child);
+      }
+      currentList.appendChild(li);
+      child.remove();
+    } else {
+      currentList = null;
+    }
+  }
+
+  // ④ Wrap orphan <li> elements (those whose parent is not <ul>/<ol>)
+  //    into a <ul>. Group consecutive orphans together.
+  const orphanLis = Array.from(root.querySelectorAll('li')).filter((li) => {
+    const p = li.parentNode as Element | null;
+    return !p || (p.nodeName !== 'UL' && p.nodeName !== 'OL');
+  });
+  const groups: HTMLLIElement[][] = [];
+  for (const li of orphanLis) {
+    const last = groups[groups.length - 1];
+    if (last && last[last.length - 1].nextElementSibling === li) {
+      last.push(li as HTMLLIElement);
+    } else {
+      groups.push([li as HTMLLIElement]);
+    }
+  }
+  for (const group of groups) {
+    const ul = doc.createElement('ul');
+    group[0].parentNode?.insertBefore(ul, group[0]);
+    for (const li of group) ul.appendChild(li);
+  }
+
+  return root.innerHTML;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -236,7 +298,15 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         reader.onload = (ev) => {
           const src = ev.target?.result as string;
           if (editorRef.current && allowImages) {
-            editorRef.current.chain().focus().setImage({ src, size: 'large' } as any).run();
+            // Insert and then select the image so the size toolbar shows up
+            // immediately — user can switch 大/中/小 right away.
+            const ed = editorRef.current;
+            ed.chain().focus().setImage({ src, size: 'large' } as any).run();
+            // Move selection back onto the just-inserted image node.
+            const pos = ed.state.selection.from - 1;
+            if (pos >= 0) {
+              try { ed.commands.setNodeSelection(pos); } catch { /* no-op */ }
+            }
           }
         };
         reader.readAsDataURL(file);
@@ -245,7 +315,14 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       // Normalize HTML before ProseMirror parses it: preserves more of the
       // source formatting (colors/lists/images) from WeChat/DingTalk etc.
       transformPastedHTML(html) {
-        return normalizePastedHTML(html);
+        const out = normalizePastedHTML(html);
+        // Debug log — open DevTools > Console to inspect what clipboard gave us
+        // and what we hand to ProseMirror. Helps trace lost content.
+        try {
+          console.debug('[Paste IN ]', html.slice(0, 2000));
+          console.debug('[Paste OUT]', out.slice(0, 2000));
+        } catch { /* ignore */ }
+        return out;
       },
     },
   });
@@ -283,6 +360,13 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   const activeColor = editor.getAttributes('textStyle').color as string | undefined;
   const activeFontSize = (editor.getAttributes('textStyle') as any).fontSize as string | undefined;
+  const isImageSelected = editor.isActive('image');
+  const activeImageSize = (editor.getAttributes('image') as any)?.size as string | undefined;
+
+  // Change size of the currently selected image (works for uploads, pastes, etc.)
+  const setImageSize = (size: 'large' | 'medium' | 'small') => {
+    editor.chain().focus().updateAttributes('image', { size }).run();
+  };
 
   // ── Dropdown menus ──
   const fontSizeItems: MenuProps['items'] = FONT_SIZES.map(size => ({
@@ -425,7 +509,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
             {/* Image insert dropdown */}
             <Dropdown menu={{ items: imageMenuItems }} trigger={['click']}>
-              <Tooltip title="在光标处插入图片" mouseEnterDelay={0.8}>
+              <Tooltip title="在光标处插入图片（也可直接粘贴截图）" mouseEnterDelay={0.8}>
                 <Button type="text" size="small" style={{
                   height: 28, padding: '0 8px', fontSize: 12,
                   color: '#555', border: 'none', borderRadius: 4,
@@ -434,6 +518,42 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 </Button>
               </Tooltip>
             </Dropdown>
+
+            {/* Size selector for currently-selected image (any insert method) */}
+            {isImageSelected && (
+              <>
+                <TDivider />
+                <span style={{ fontSize: 11, color: '#999', marginLeft: 2, marginRight: 2 }}>尺寸</span>
+                {(['large', 'medium', 'small'] as const).map((s) => {
+                  const labels = { large: '大', medium: '中', small: '小' };
+                  const active = activeImageSize === s;
+                  return (
+                    <Tooltip
+                      key={s}
+                      title={s === 'large' ? '大图（全宽）'
+                          : s === 'medium' ? '中图（1/2 宽）'
+                          : '小图（1/3 宽）'}
+                      mouseEnterDelay={0.5}
+                    >
+                      <Button
+                        type="text"
+                        size="small"
+                        onClick={() => setImageSize(s)}
+                        style={{
+                          width: 28, height: 28, padding: 0,
+                          fontSize: 12, fontWeight: active ? 700 : 400,
+                          color: active ? '#ff6900' : '#555',
+                          background: active ? '#fff3e6' : 'transparent',
+                          border: 'none', borderRadius: 4,
+                        }}
+                      >
+                        {labels[s]}
+                      </Button>
+                    </Tooltip>
+                  );
+                })}
+              </>
+            )}
 
             {/* Hidden file inputs — one per size */}
             {(['large', 'medium', 'small'] as const).map(size => (

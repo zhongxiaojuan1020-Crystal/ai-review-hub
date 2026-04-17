@@ -1,5 +1,5 @@
-import React, { useCallback, useRef } from 'react';
-import { useEditor, EditorContent, Extension } from '@tiptap/react';
+import React, { useCallback, useRef, useEffect } from 'react';
+import { useEditor, EditorContent, Extension, Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import UnderlineExt from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
@@ -59,6 +59,81 @@ const CustomImage = ImageExt.extend({
     };
   },
 });
+
+// ─── Paste helpers ───────────────────────────────────────────────────────────
+// Strip font-family / font-size / line-height from inline style attrs so
+// pasted content uses our default typography. Keep color/background/etc.
+function stripFontStyles(html: string): string {
+  return html.replace(/style\s*=\s*(['"])([^'"]*)\1/gi, (_m, quote, styleContent) => {
+    const cleaned = (styleContent as string)
+      .split(';')
+      .map((d: string) => d.trim())
+      .filter((d: string) => {
+        if (!d) return false;
+        const lc = d.toLowerCase();
+        return !lc.startsWith('font-family')
+            && !lc.startsWith('font-size')
+            && !lc.startsWith('line-height')
+            && !lc.startsWith('font:');
+      })
+      .join('; ');
+    if (!cleaned) return '';
+    return `style=${quote}${cleaned}${quote}`;
+  });
+}
+
+// Detect bullet-like characters at the start of a string
+const BULLET_RE = /^[\s\u00A0]*[•●▪▸▶►·・○◆■]/;
+
+// Transform pasted HTML to maximize fidelity:
+// 1) unwrap <section> / <article> wrappers (WeChat-style articles)
+// 2) convert consecutive "• xxx" paragraphs into a proper <ul><li> list
+// 3) strip font-family / font-size / line-height
+function normalizePastedHTML(html: string): string {
+  let out = html;
+
+  // Unwrap section/article tags (keep contents)
+  out = out.replace(/<section\b[^>]*>/gi, '').replace(/<\/section>/gi, '');
+  out = out.replace(/<article\b[^>]*>/gi, '').replace(/<\/article>/gi, '');
+
+  // Strip font styles
+  out = stripFontStyles(out);
+
+  // Bullet paragraphs → <ul><li>
+  try {
+    const doc = new DOMParser().parseFromString(`<div id="__root">${out}</div>`, 'text/html');
+    const root = doc.getElementById('__root');
+    if (root) {
+      const allPs = Array.from(root.querySelectorAll('p')) as HTMLElement[];
+      let currentList: HTMLUListElement | null = null;
+      for (let i = 0; i < allPs.length; i++) {
+        const p = allPs[i];
+        const txt = (p.textContent || '').trim();
+        const isBullet = BULLET_RE.test(txt);
+        if (isBullet) {
+          const inner = p.innerHTML.replace(/^[\s\u00A0]*[•●▪▸▶►·・○◆■][\s\u00A0]*/, '');
+          const li = doc.createElement('li');
+          li.innerHTML = inner;
+          const prev = allPs[i - 1];
+          const prevIsBullet = !!prev && BULLET_RE.test((prev.textContent || '').trim());
+          if (!prevIsBullet || !currentList) {
+            currentList = doc.createElement('ul');
+            p.parentNode?.insertBefore(currentList, p);
+          }
+          currentList.appendChild(li);
+          p.remove();
+        } else {
+          currentList = null;
+        }
+      }
+      out = root.innerHTML;
+    }
+  } catch {
+    // DOMParser not available or parse failed — return as-is
+  }
+
+  return out;
+}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const FONT_SIZES = ['12px', '13px', '14px', '15px', '16px', '18px', '20px', '24px'];
@@ -122,6 +197,10 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     large: null, medium: null, small: null,
   });
 
+  // Ref held separately so editorProps.handlePaste (baked in at init time)
+  // can always reach the latest editor instance.
+  const editorRef = useRef<Editor | null>(null);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: false, codeBlock: false, code: false }),
@@ -137,7 +216,42 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     onUpdate({ editor }) {
       onChange?.(editor.getHTML());
     },
+    editorProps: {
+      // Intercept paste: if the clipboard only has an image (e.g. screenshot),
+      // convert it to a base64 <img> and insert at cursor. Otherwise let the
+      // default HTML/text paste flow proceed.
+      handlePaste(_view, event) {
+        const cb = event.clipboardData;
+        if (!cb) return false;
+        const hasHtml = !!cb.getData('text/html')?.trim();
+        const hasText = !!cb.getData('text/plain')?.trim();
+        if (hasHtml || hasText) return false;
+        const items = Array.from(cb.items || []);
+        const imgItem = items.find(i => i.type.startsWith('image/'));
+        if (!imgItem) return false;
+        const file = imgItem.getAsFile();
+        if (!file) return false;
+        event.preventDefault();
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const src = ev.target?.result as string;
+          if (editorRef.current && allowImages) {
+            editorRef.current.chain().focus().setImage({ src, size: 'large' } as any).run();
+          }
+        };
+        reader.readAsDataURL(file);
+        return true;
+      },
+      // Normalize HTML before ProseMirror parses it: preserves more of the
+      // source formatting (colors/lists/images) from WeChat/DingTalk etc.
+      transformPastedHTML(html) {
+        return normalizePastedHTML(html);
+      },
+    },
   });
+
+  // Keep editorRef in sync for handlePaste to use
+  useEffect(() => { editorRef.current = editor; }, [editor]);
 
   const setFontSize = useCallback((size: string) => {
     editor?.chain().focus().setMark('textStyle', { fontSize: size } as any).run();

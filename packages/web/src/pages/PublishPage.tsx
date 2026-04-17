@@ -210,7 +210,7 @@ const PublishPage: React.FC = () => {
     setAiLoading(true);
     try {
       const res = await api.post('/api/ai/format', { rawText: aiRawText });
-      const { title, description: aiDesc, sections: aiSections, _fallback, _reason } = res.data;
+      const { title, description: aiDesc, sections: aiSections, sources: aiSources, _fallback, _reason } = res.data;
       if (title) form.setFieldValue('company', `【短评】${title}`);
       if (typeof aiDesc === 'string') setDescription(aiDesc);
       if (Array.isArray(aiSections)) {
@@ -222,6 +222,9 @@ const PublishPage: React.FC = () => {
               }))
             : [{ title: '', content: '' }]
         );
+      }
+      if (Array.isArray(aiSources) && aiSources.length > 0) {
+        form.setFieldValue('sources', aiSources);
       }
       // Force editors to remount with AI-filled content
       setResetKey(k => k + 1);

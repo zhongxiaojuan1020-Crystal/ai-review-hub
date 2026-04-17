@@ -46,18 +46,35 @@ const SYSTEM_PROMPT = `你是「AI 短评圈」的排版助手。你的唯一任
 作者常写成：
 
   观点一：Claude 4.5 在编码能力上领先。具体来看，在 SWE-Bench 上...
-  └──── 小标题 ────┘  └─────── 正文 ─────────┘
+  └────────── 小标题（完整保留） ──────┘  └─── 正文 ───┘
 
-处理：
-- 如果某段以「观点N/亮点N/要点N/第N点/①②③/一、二、三、」等序号引导词开头，跟「：」或「，」
-- 则序号后到第一个句号/感叹号/问号前的那句话 = section.title
-- 其后内容 = section.content
-- section.title 中**不要**包含「观点一：」这种引导前缀
+处理规则：
+- 如果某段以「观点N/亮点N/要点N/第N点/技术亮点N/①②③/一、二、三、」等序号引导词开头（跟「：」「、」「，」「.」）
+- 则从段首到第一个句号/问号/感叹号前的那整句话 = section.title
+- **⚠️ section.title 必须完整保留序号前缀**！比如"观点一：Claude 4.5 在编码能力上领先"这一整句都是 title，不要剥离"观点一："
+- 从第一个句号之后、到下一个"观点N/亮点N"之前的内容 = section.content
+- 原文里已经有的加粗/颜色/背景色等 HTML 标签全部原样保留
 
 ### 完全没有结构时
 如果作者贴的是一整段没有分节的文字：
 - description 放全部内容
 - sections 返回空数组 []
+
+## 参考来源（sources）
+原文末尾经常会列出几条参考链接，常见格式：
+  官方博客：https://...
+  OpenAI收购Sky新闻：https://...
+  原Sky功能介绍：https://...
+
+或：
+  - https://xxx.com
+  - https://yyy.com
+
+处理规则：
+- 识别所有这种形如「描述: URL」或纯 URL 列表的参考链接
+- 把**每条 URL**（只要 URL 本身，不含中文描述前缀）放进 sources 数组
+- 这些参考链接行**不要**再出现在最后一个 section 的 content 里（要从 content 中删掉）
+- 如果原文没有参考链接，sources 返回空数组 []
 
 # HTML 处理规则
 - 如果输入是纯文本，用 <p> 包裹段落，换行用 <br>
@@ -72,8 +89,9 @@ const SYSTEM_PROMPT = `你是「AI 短评圈」的排版助手。你的唯一任
   "title": "标题文字",
   "description": "导语 HTML",
   "sections": [
-    { "title": "小标题文字", "content": "正文 HTML" }
-  ]
+    { "title": "完整小标题（含「观点一：」等前缀）", "content": "正文 HTML" }
+  ],
+  "sources": ["https://xxx.com", "https://yyy.com"]
 }
 
 # 禁忌
@@ -89,6 +107,7 @@ interface FormatResult {
   title: string;
   description: string;
   sections: { title: string; content: string }[];
+  sources: string[];
 }
 
 /**
@@ -251,6 +270,7 @@ export async function aiRoutes(app: FastifyInstance) {
           title: '',
           description: rawText,
           sections: [],
+          sources: [],
           _fallback: true,
           _reason: 'AI 返回无法解析，已将原内容填入摘要',
         };
@@ -269,6 +289,11 @@ export async function aiRoutes(app: FastifyInstance) {
                 title: String(s.title || '').trim(),
                 content: postProcess(s.content || '').trim(),
               }))
+          : [],
+        sources: Array.isArray(result.sources)
+          ? result.sources
+              .map((s) => String(s || '').trim())
+              .filter((s) => /^https?:\/\//i.test(s))
           : [],
       };
 

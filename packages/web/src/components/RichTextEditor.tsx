@@ -319,8 +319,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         // Debug log — open DevTools > Console to inspect what clipboard gave us
         // and what we hand to ProseMirror. Helps trace lost content.
         try {
-          console.debug('[Paste IN ]', html.slice(0, 2000));
-          console.debug('[Paste OUT]', out.slice(0, 2000));
+          console.log('%c[Paste IN ]', 'color:#1677ff;font-weight:bold', html);
+          console.log('%c[Paste OUT]', 'color:#ff6900;font-weight:bold', out);
         } catch { /* ignore */ }
         return out;
       },

@@ -284,6 +284,41 @@ export async function sendDistributeNotification(params: {
 }
 
 /**
+ * Send a publish-reminder notification so team members know a new
+ * review has been posted and they should come score it.
+ *
+ * The action button links to the internal app review page (requires login),
+ * so members can sign in and leave their scores.
+ */
+export async function sendPublishReminderNotification(params: {
+  authorName: string;
+  reviewTitle: string;
+  reviewUrl: string;   // internal app URL, e.g. https://app.example.com/reviews/:id
+}): Promise<{ ok: boolean; errcode?: number; errmsg?: string; reason?: string }> {
+  const wrapUrl = (url: string) =>
+    `dingtalk://dingtalkclient/page/link?url=${encodeURIComponent(url)}&pc_slide=false`;
+
+  const payload = {
+    msgtype: 'actionCard',
+    actionCard: {
+      title: `[短评] ${params.authorName} 发布了新短评`,
+      text: [
+        `### ${params.authorName} 新发布了一条短评`,
+        '',
+        `**「${params.reviewTitle}」**`,
+        '',
+        '邀请大家尽快阅读并评分 👇',
+      ].join('\n'),
+      btnOrientation: '0',
+      btns: [
+        { title: '📖 阅读并评分', actionURL: wrapUrl(params.reviewUrl) },
+      ],
+    },
+  };
+  return await postToDingTalk(payload);
+}
+
+/**
  * Send a small test message to the DingTalk webhook so the user can
  * verify their config from the settings page.
  */

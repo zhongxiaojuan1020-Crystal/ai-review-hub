@@ -4,7 +4,7 @@ import {
 } from 'antd';
 import {
   FireOutlined, EditOutlined, DeleteOutlined, SendOutlined, LinkOutlined, ClockCircleOutlined,
-  RedoOutlined,
+  RedoOutlined, BellOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -39,6 +39,7 @@ const ReviewDetailDrawer: React.FC<Props> = ({ reviewId, open, onClose, onChange
   const [previewOpen, setPreviewOpen] = useState(false);
   const [distributing, setDistributing] = useState(false);
   const [repushing, setRepushing] = useState(false);
+  const [notifying, setNotifying] = useState(false);
   const navigate = useNavigate();
   const { user } = useAuthStore();
 
@@ -117,10 +118,27 @@ const ReviewDetailDrawer: React.FC<Props> = ({ reviewId, open, onClose, onChange
     try {
       const res = await api.post(`/api/reviews/${reviewId}/guest-link`);
       await navigator.clipboard.writeText(res.data.url);
-      message.success('访客链接已复制到剪贴板');
+      message.success('分享链接已复制到剪贴板');
     } catch {
       message.error('生成链接失败');
     }
+  };
+
+  const handleNotify = async () => {
+    if (!reviewId) return;
+    setNotifying(true);
+    try {
+      const res = await api.post(`/api/reviews/${reviewId}/notify`);
+      const dt = res.data?.dingtalk;
+      if (dt && !dt.ok) {
+        message.warning(`发布提醒发送失败：${dt.errmsg || dt.reason || '未知错误'}`, 6);
+      } else {
+        message.success('已在钉钉群发送发布提醒');
+      }
+    } catch (err: any) {
+      message.error(err.response?.data?.error || '发送失败');
+    }
+    setNotifying(false);
   };
 
   const isAuthor = !!(review && user?.id === review.authorId);
@@ -264,7 +282,12 @@ const ReviewDetailDrawer: React.FC<Props> = ({ reviewId, open, onClose, onChange
                   再次推送
                 </Button>
               )}
-              {isSupervisor && (
+              {(isAuthor || isSupervisor) && (
+                <Button size="small" icon={<BellOutlined />} loading={notifying} onClick={handleNotify}>
+                  发布提醒
+                </Button>
+              )}
+              {(isAuthor || isSupervisor) && (
                 <Button size="small" icon={<LinkOutlined />} onClick={handleGenerateLink}>
                   生成分享链接
                 </Button>

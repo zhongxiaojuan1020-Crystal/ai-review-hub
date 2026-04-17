@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '../db/index.js';
 import { reviews, users, config as configTable } from '../db/schema.js';
 import { generateGuestToken } from '../services/guest-token.js';
-import { sendDistributeNotification } from '../services/dingtalk.js';
+import { sendDistributeNotification, sendPublishReminderNotification } from '../services/dingtalk.js';
 
 /**
  * Read the supervisor-configured DingTalk base URL override from DB.
@@ -127,15 +127,56 @@ export async function distributeRoutes(app: FastifyInstance) {
     };
   });
 
-  // Generate guest link for a review
+  // Generate guest link for a review — any authenticated member can generate one
+  // (not just supervisors) so authors can share their review before scoring completes.
   app.post('/api/reviews/:id/guest-link', { preValidation: [app.authenticate] }, async (request, reply) => {
-    const userRole = (request.user as any).role;
-    if (userRole !== 'supervisor') return reply.status(403).send({ error: 'Supervisor only' });
-
     const { id } = request.params as { id: string };
+    const db = getDb();
+    const review = db.select().from(reviews).where(eq(reviews.id, id)).get();
+    if (!review) return reply.status(404).send({ error: 'Review not found' });
+
     const token = generateGuestToken(id);
-    const baseUrl = resolvePublicBaseUrl(request);
+    const dtBase = getDingTalkBaseUrlOverride();
+    const baseUrl = dtBase || resolvePublicBaseUrl(request);
     return { url: `${baseUrl}/guest/${token}` };
+  });
+
+  // Send a publish-reminder notification to the DingTalk group.
+  // Available to: the review author OR a supervisor.
+  // Links to the internal review page (requires login) so members can score.
+  app.post('/api/reviews/:id/notify', { preValidation: [app.authenticate] }, async (request, reply) => {
+    const currentUser = request.user as any;
+    const { id } = request.params as { id: string };
+    const db = getDb();
+
+    const review = db.select().from(reviews).where(eq(reviews.id, id)).get();
+    if (!review) return reply.status(404).send({ error: 'Review not found' });
+
+    // Only the author or a supervisor may trigger the reminder
+    const isAuthor = review.authorId === currentUser.userId || review.authorId === currentUser.id;
+    const isSupervisor = currentUser.role === 'supervisor';
+    if (!isAuthor && !isSupervisor) {
+      return reply.status(403).send({ error: '只有作者或主管可以发送提醒' });
+    }
+
+    // Build the internal app URL (members need to log in to score)
+    const dtBase = getDingTalkBaseUrlOverride();
+    const baseUrl = dtBase || resolvePublicBaseUrl(request);
+    const reviewUrl = `${baseUrl}/reviews/${id}`;
+
+    // Use author name from DB, fall back to the current user's name
+    const author = review.authorId
+      ? db.select().from(users).where(eq(users.id, review.authorId)).get()
+      : null;
+    const authorName = author?.name || currentUser.name || '成员';
+
+    const dtResult = await sendPublishReminderNotification({
+      authorName,
+      reviewTitle: review.company,
+      reviewUrl,
+    });
+
+    return { success: true, dingtalk: dtResult };
   });
 
   // Re-push an already-distributed review to DingTalk (supervisor only)

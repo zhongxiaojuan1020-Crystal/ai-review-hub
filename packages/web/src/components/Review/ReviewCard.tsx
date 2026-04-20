@@ -7,6 +7,7 @@ import {
 import dayjs from 'dayjs';
 import { getTagColor } from '@ai-review/shared';
 import { useFavoritesStore } from '../../stores/favoritesStore';
+import { extractSectionTitles, hasNewBody } from '../../utils/reviewBody';
 
 const { Text, Paragraph } = Typography;
 
@@ -30,13 +31,27 @@ export const MiniScoreAvatars: React.FC<{ scorers: any[] }> = ({ scorers }) => (
   </div>
 );
 
-/** Strip HTML tags and extract plain text from a rich-text body. */
+/** Strip HTML tags and extract plain text from a rich-text body.
+ *
+ * Handles three input shapes robustly:
+ *   1. Normal HTML: `<p><strong>x</strong></p>` → `x`
+ *   2. Double-encoded HTML: `&lt;p&gt;&lt;strong&gt;x&lt;/strong&gt;&lt;/p&gt;`
+ *      — innerHTML decodes one layer to literal `<p>...`, which we then
+ *      strip via regex. This previously leaked raw tags onto the card.
+ *   3. Plain text: returned as-is.
+ */
 export function plainTextFromHtml(html: string): string {
   if (!html) return '';
-  if (typeof document === 'undefined') return html.replace(/<[^>]*>/g, '');
-  const tmp = document.createElement('div');
-  tmp.innerHTML = html;
-  return (tmp.textContent || '').trim();
+  let s = html;
+  if (typeof document !== 'undefined') {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = s;
+    s = tmp.textContent || '';
+  }
+  // Second pass: strip any literal tag-looking text that survived entity
+  // decoding (double-encoded inputs), or any that we never parsed in SSR.
+  s = s.replace(/<\/?[a-zA-Z][^>]*>/g, '');
+  return s.trim();
 }
 
 interface ReviewCardProps {
@@ -50,10 +65,21 @@ interface ReviewCardProps {
 
 const ReviewCard: React.FC<ReviewCardProps> = ({ review, onClick, tiltDeg, actionSlot }) => {
   const progress = review.scoringProgress;
-  const sections: any[] = review.sections || [];
-  // body can be HTML (old rich editor) or JSON metadata (new structured) or null
-  const hasHtmlBody = !!review.body && !review.body.startsWith('{');
-  const bodyPreview = hasHtmlBody ? plainTextFromHtml(review.body) : '';
+  const legacySections: any[] = review.sections || [];
+  // body can be HTML (new unified editor) or JSON metadata (legacy) or null.
+  const newBody = hasNewBody(review);
+  // For new-format reviews, extract inline <h3 class="section-title"> as the
+  // numbered circle list, and use the rest of the body (minus those headings)
+  // as the paragraph preview.
+  const bodyTitles = newBody ? extractSectionTitles(review.body) : [];
+  const bodyPreview = newBody
+    ? plainTextFromHtml(
+        String(review.body).replace(
+          /<h3[^>]*class=['"][^'"]*section-title[^'"]*['"][^>]*>[\s\S]*?<\/h3>/gi,
+          ''
+        )
+      )
+    : '';
 
   const { isFavorited, toggle } = useFavoritesStore();
   const favorited = isFavorited(review.id);
@@ -118,33 +144,39 @@ const ReviewCard: React.FC<ReviewCardProps> = ({ review, onClick, tiltDeg, actio
         </div>
       </div>
 
-      {/* Row 2: event description */}
+      {/* Row 2: body / description preview (plain text, first couple lines) */}
       <Paragraph
         ellipsis={{ rows: 2 }}
         style={{ color: '#888', fontSize: 13, marginBottom: 10, lineHeight: 1.6 }}
       >
-        {hasHtmlBody ? bodyPreview : plainTextFromHtml(review.description || '')}
+        {newBody ? bodyPreview : plainTextFromHtml(review.description || '')}
       </Paragraph>
 
-      {/* Row 3: section titles as viewpoint pills (legacy reviews only) */}
-      {!hasHtmlBody && sections.length > 0 && (
+      {/* Row 3: numbered subtitle list — works for both new body (h3 titles)
+          and legacy sections[]. */}
+      {(newBody ? bodyTitles : legacySections.map((s: any) => plainTextFromHtml(s.title))).filter(Boolean).length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 10 }}>
-          {sections.map((sec: any, i: number) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-              <span style={{
-                flexShrink: 0, marginTop: 2,
-                width: 18, height: 18, borderRadius: '50%',
-                background: '#FF6A00', color: '#fff',
-                fontSize: 11, fontWeight: 700,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                {i + 1}
-              </span>
-              <Text style={{ fontSize: 13, color: '#333', lineHeight: 1.5 }} ellipsis>
-                {sec.title}
-              </Text>
-            </div>
-          ))}
+          {(newBody
+            ? bodyTitles
+            : legacySections.map((s: any) => plainTextFromHtml(s.title || ''))
+          )
+            .filter(Boolean)
+            .map((t: string, i: number) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <span style={{
+                  flexShrink: 0, marginTop: 2,
+                  width: 18, height: 18, borderRadius: '50%',
+                  background: '#FF6A00', color: '#fff',
+                  fontSize: 11, fontWeight: 700,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {i + 1}
+                </span>
+                <Text style={{ fontSize: 13, color: '#333', lineHeight: 1.5 }} ellipsis>
+                  {t}
+                </Text>
+              </div>
+            ))}
         </div>
       )}
 

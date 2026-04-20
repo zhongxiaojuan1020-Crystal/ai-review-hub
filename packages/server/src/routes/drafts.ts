@@ -5,6 +5,24 @@ import { eq, and } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
 export async function draftRoutes(app: FastifyInstance) {
+  // GET /api/drafts — list all drafts belonging to the current user
+  // (used by "My Drafts" tab on the profile page).
+  app.get(
+    '/api/drafts',
+    { preValidation: [app.authenticate] },
+    async (request) => {
+      const db = getDb();
+      const userId = (request.user as any).id;
+      const rows = await db.query.drafts.findMany({
+        where: eq(drafts.userId, userId),
+      });
+      // Sort newest-first so the profile list shows recent work up top.
+      return rows
+        .slice()
+        .sort((a: any, b: any) => String(b.savedAt).localeCompare(String(a.savedAt)));
+    }
+  );
+
   // GET /api/drafts/:draftKey — load user's draft
   app.get(
     '/api/drafts/:draftKey',

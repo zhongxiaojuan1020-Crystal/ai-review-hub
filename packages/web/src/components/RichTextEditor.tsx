@@ -13,7 +13,9 @@ import {
   BoldOutlined, ItalicOutlined, UnderlineOutlined, StrikethroughOutlined,
   AlignLeftOutlined, AlignCenterOutlined, AlignRightOutlined,
   UnorderedListOutlined, OrderedListOutlined, PictureOutlined,
+  FontSizeOutlined,
 } from '@ant-design/icons';
+import { SECTION_TITLE_CLASS } from '../utils/reviewBody';
 import './RichTextEditor.css';
 
 // ─── Font Size Extension ─────────────────────────────────────────────────────
@@ -29,6 +31,28 @@ const FontSizeExtension = Extension.create({
           parseHTML: (el: HTMLElement) => el.style.fontSize || null,
           renderHTML: (attrs: Record<string, any>) =>
             attrs.fontSize ? { style: `font-size: ${attrs.fontSize}` } : {},
+        },
+      },
+    }];
+  },
+});
+
+// ─── Heading-Class Extension ────────────────────────────────────────────────
+// Adds a `class` attribute to the built-in `heading` node so we can mark
+// an <h3> as "section-title" (orange, bigger) for inline review subtitles.
+// We reuse StarterKit's heading rather than importing extension-heading to
+// avoid an extra dependency. Only level 3 is exposed in the toolbar.
+const HeadingClassExtension = Extension.create({
+  name: 'headingClass',
+  addGlobalAttributes() {
+    return [{
+      types: ['heading'],
+      attributes: {
+        class: {
+          default: null,
+          parseHTML: (el: HTMLElement) => el.getAttribute('class') || null,
+          renderHTML: (attrs: Record<string, any>) =>
+            attrs.class ? { class: attrs.class } : {},
         },
       },
     }];
@@ -255,6 +279,12 @@ export interface RichTextEditorProps {
   minHeight?: number;
   /** If false, hides the image-insert button and bullet/ordered list buttons. */
   allowImages?: boolean;
+  /**
+   * If true, shows a "子标题" toolbar button that toggles the current block
+   * between paragraph and `<h3 class="section-title">`. Used on the publish
+   * page where authors structure a single body with inline subtitles.
+   */
+  allowSectionTitle?: boolean;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -264,6 +294,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   placeholder = '在此输入内容...',
   minHeight = 100,
   allowImages = true,
+  allowSectionTitle = false,
 }) => {
   const fileInputRefs = useRef<{ large: HTMLInputElement | null; medium: HTMLInputElement | null; small: HTMLInputElement | null }>({
     large: null, medium: null, small: null,
@@ -275,9 +306,14 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ heading: false, codeBlock: false, code: false }),
+      StarterKit.configure({
+        heading: allowSectionTitle ? { levels: [3] } : false,
+        codeBlock: false,
+        code: false,
+      }),
+      ...(allowSectionTitle ? [HeadingClassExtension] : []),
       UnderlineExt,
-      TextAlign.configure({ types: ['paragraph'] }),
+      TextAlign.configure({ types: ['paragraph', 'heading'] }),
       TextStyle,
       FontSizeExtension,
       Color,
@@ -455,6 +491,30 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         <ToolBtn icon={<StrikethroughOutlined />} title="删除线"
           active={editor.isActive('strike')}
           onClick={() => editor.chain().focus().toggleStrike().run()} />
+
+        {allowSectionTitle && (
+          <>
+            <TDivider />
+            <ToolBtn
+              icon={<FontSizeOutlined />}
+              title="转为子标题（橙色强调）"
+              active={editor.isActive('heading', { level: 3, class: SECTION_TITLE_CLASS })}
+              onClick={() => {
+                const isSubtitle = editor.isActive('heading', { level: 3, class: SECTION_TITLE_CLASS });
+                if (isSubtitle) {
+                  // Toggle off → back to paragraph
+                  editor.chain().focus().setParagraph().run();
+                } else {
+                  // Toggle on → h3 with section-title class
+                  editor.chain().focus()
+                    .setHeading({ level: 3 })
+                    .updateAttributes('heading', { class: SECTION_TITLE_CLASS })
+                    .run();
+                }
+              }}
+            />
+          </>
+        )}
 
         <TDivider />
 

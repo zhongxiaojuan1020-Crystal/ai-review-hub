@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Card, Typography, Tabs, Empty, Spin, Tag, Space, Avatar, Statistic, Row, Col,
-  Button, Input, message, Modal,
+  Button, Input, message, Modal, Popconfirm,
 } from 'antd';
 import {
   UserOutlined, FileTextOutlined, StarOutlined, EditOutlined, LockOutlined, CameraOutlined,
+  EditFilled, DeleteOutlined, FileAddOutlined,
 } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { useAuthStore } from '../stores/authStore';
 import { useFavoritesStore } from '../stores/favoritesStore';
@@ -17,6 +19,7 @@ const { Title, Text } = Typography;
 
 const ProfilePage: React.FC = () => {
   const { user, setUser } = useAuthStore();
+  const navigate = useNavigate();
   const [reviews, setReviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [drawerReviewId, setDrawerReviewId] = useState<string | null>(null);
@@ -25,6 +28,10 @@ const ProfilePage: React.FC = () => {
   const { hydrate } = useFavoritesStore();
   const [favorites, setFavorites] = useState<any[]>([]);
   const [favLoading, setFavLoading] = useState(false);
+
+  // Drafts tab state
+  const [drafts, setDrafts] = useState<any[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
 
   // Profile edit state
   const [editName, setEditName] = useState(false);
@@ -54,6 +61,37 @@ const ProfilePage: React.FC = () => {
       setFavorites(res.data);
     } catch { /* ignore */ }
     setFavLoading(false);
+  };
+
+  const fetchDrafts = async () => {
+    setDraftsLoading(true);
+    try {
+      const res = await api.get('/api/drafts');
+      setDrafts(res.data || []);
+    } catch { /* ignore */ }
+    setDraftsLoading(false);
+  };
+
+  // Resume a draft by navigating back to the publish page. Two keys are in use:
+  //   'publish'        → brand-new draft (→ /publish)
+  //   'edit:{reviewId}' → an edit draft (→ /publish?edit={reviewId})
+  const resumeDraft = (draft: { draftKey: string }) => {
+    if (draft.draftKey?.startsWith('edit:')) {
+      const id = draft.draftKey.slice('edit:'.length);
+      navigate(`/publish?edit=${encodeURIComponent(id)}`);
+    } else {
+      navigate('/publish');
+    }
+  };
+
+  const deleteDraft = async (draftKey: string) => {
+    try {
+      await api.delete(`/api/drafts/${encodeURIComponent(draftKey)}`);
+      setDrafts(ds => ds.filter(d => d.draftKey !== draftKey));
+      message.success('草稿已删除');
+    } catch {
+      message.error('删除失败');
+    }
   };
 
   useEffect(() => {
@@ -297,11 +335,77 @@ const ProfilePage: React.FC = () => {
                 ))
               ),
             },
+            {
+              key: 'drafts',
+              label: <span><FileAddOutlined style={{ marginRight: 4 }} />我的草稿</span>,
+              children: draftsLoading ? <Spin /> : drafts.length === 0 ? (
+                <Empty description="没有未完成的草稿" />
+              ) : (
+                drafts.map(d => {
+                  // Derive a one-line preview from the stored body. Handle both
+                  // the new format (raw HTML) and the legacy JSON wrapper.
+                  const bodyStr: string = typeof d.body === 'string' ? d.body : '';
+                  let previewHtml = bodyStr;
+                  if (bodyStr.trim().startsWith('{')) {
+                    try {
+                      const parsed = JSON.parse(bodyStr);
+                      previewHtml = String(parsed?.description || '')
+                        + (Array.isArray(parsed?.sections)
+                            ? parsed.sections.map((s: any) => s?.title || '').join(' · ')
+                            : '');
+                    } catch { previewHtml = ''; }
+                  }
+                  const previewText = previewHtml.replace(/<[^>]*>/g, '').trim();
+                  const isEdit = d.draftKey?.startsWith('edit:');
+                  return (
+                    <Card key={d.id || d.draftKey} size="small" style={{ marginBottom: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <Space size={6} style={{ marginBottom: 4 }}>
+                            <Text strong>{d.company || '（未填标题）'}</Text>
+                            {isEdit && <Tag color="blue">编辑</Tag>}
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              {dayjs(d.savedAt).format('MM/DD HH:mm')}
+                            </Text>
+                          </Space>
+                          {previewText && (
+                            <Text type="secondary" ellipsis style={{ display: 'block', fontSize: 12 }}>
+                              {previewText.slice(0, 120)}
+                            </Text>
+                          )}
+                        </div>
+                        <Space>
+                          <Button
+                            size="small"
+                            type="primary"
+                            icon={<EditFilled />}
+                            onClick={() => resumeDraft(d)}
+                          >
+                            继续编辑
+                          </Button>
+                          <Popconfirm
+                            title="删除此草稿？"
+                            description="此操作无法撤销"
+                            onConfirm={() => deleteDraft(d.draftKey)}
+                            okText="删除" cancelText="取消"
+                          >
+                            <Button size="small" icon={<DeleteOutlined />} danger />
+                          </Popconfirm>
+                        </Space>
+                      </div>
+                    </Card>
+                  );
+                })
+              ),
+            },
           ]}
           onChange={(key) => {
             if (key === 'favorites' && favorites.length === 0) {
               fetchFavorites();
               hydrate();
+            }
+            if (key === 'drafts') {
+              fetchDrafts();
             }
           }}
         />

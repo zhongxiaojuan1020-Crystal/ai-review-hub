@@ -43,6 +43,35 @@ export async function publicImageRoutes(app: FastifyInstance) {
     return reply.send(parsed.buffer);
   });
 
+  // Serve body-HTML inline images (new unified editor format):
+  // /api/public/review-image/:reviewId/body/:idx
+  // Extracts the Nth base64 <img> from the body HTML and serves it as binary.
+  app.get('/api/public/review-image/:reviewId/body/:idx', async (request, reply) => {
+    const { reviewId, idx } = request.params as { reviewId: string; idx: string };
+    const db = getDb();
+    const review = db.select().from(reviews).where(eq(reviews.id, reviewId)).get();
+    if (!review) return reply.status(404).send('Not found');
+
+    const body: string = typeof review.body === 'string' ? review.body : '';
+    if (!body || body.startsWith('{')) return reply.status(404).send('No body images');
+
+    // Extract all data: URI src attributes from <img> tags in order.
+    const images: string[] = [];
+    const re = /<img\b[^>]*\bsrc=(['"])(data:[^'"]+)\1[^>]*>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(body)) !== null) images.push(m[2]);
+
+    const imgData = images[parseInt(idx, 10)];
+    if (!imgData) return reply.status(404).send('Image not found');
+
+    const parsed = parseDataUri(imgData);
+    if (!parsed) return reply.status(400).send('Invalid image data');
+
+    reply.header('Content-Type', parsed.mime);
+    reply.header('Cache-Control', 'public, max-age=86400');
+    return reply.send(parsed.buffer);
+  });
+
   // Serve section images: /api/public/review-image/:reviewId/sec/:secIdx/:imgIdx
   app.get('/api/public/review-image/:reviewId/sec/:secIdx/:imgIdx', async (request, reply) => {
     const { reviewId, secIdx, imgIdx } = request.params as { reviewId: string; secIdx: string; imgIdx: string };

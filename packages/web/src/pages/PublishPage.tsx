@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Card, Form, Input, Button, Select, Typography, Space, message, Divider,
-  Modal, Radio, Tag as AntTag, Collapse, Tooltip,
+  Card, Form, Input, Button, Select, Typography, Space, message,
+  Modal, Radio, Tag as AntTag, Collapse,
 } from 'antd';
 import {
   PlusOutlined, MinusCircleOutlined, ThunderboltOutlined, LoadingOutlined,
@@ -15,16 +15,11 @@ import dayjs from 'dayjs';
 import api from '../api/client';
 import { useAuthStore } from '../stores/authStore';
 import RichTextEditor from '../components/RichTextEditor';
+import { composeBodyFromLegacy, extractSectionTitles } from '../utils/reviewBody';
 
 const { Title, Text } = Typography;
-const { TextArea } = Input;
 
 const AUTO_SAVE_INTERVAL = 30_000;
-
-interface Section {
-  title: string;   // rich HTML
-  content: string; // rich HTML with inline images
-}
 
 const PublishPage: React.FC = () => {
   const [form] = Form.useForm();
@@ -34,9 +29,9 @@ const PublishPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
 
-  // Structured fields — description and sections.content are rich HTML strings
-  const [description, setDescription] = useState('');
-  const [sections, setSections] = useState<Section[]>([{ title: '', content: '' }]);
+  // Unified body (HTML) — contains paragraphs, images, and <h3 class="section-title">
+  // subtitles all in one stream.
+  const [body, setBody] = useState('');
   const [customTags, setCustomTags] = useState<TagDef[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [pickerLevel, setPickerLevel] = useState<'L1' | 'L2'>('L1');
@@ -63,21 +58,24 @@ const PublishPage: React.FC = () => {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [saving, setSaving] = useState(false);
   const dirtyRef = useRef(false);
+  // Guard against StrictMode double-mount firing the restore modal twice
+  const draftCheckedRef = useRef(false);
   const draftKey = editId ? `edit:${editId}` : 'publish';
 
-  useEffect(() => { dirtyRef.current = true; }, [description, sections, selectedTags]);
+  useEffect(() => { dirtyRef.current = true; }, [body, selectedTags]);
 
   const saveDraft = useCallback(async (silent = true) => {
     if (!dirtyRef.current) return;
     const company = form.getFieldValue('company');
     const sources = form.getFieldValue('sources');
-    const hasContent = company || description || sections.some(s => s.title || s.content);
+    const hasContent = company || body;
     if (!hasContent) return;
     setSaving(true);
     try {
       await api.put(`/api/drafts/${draftKey}`, {
         company,
-        body: JSON.stringify({ description, sections }),
+        // New format: store body HTML directly (no more JSON wrapping)
+        body,
         tags: selectedTags,
         sources: (sources || []).filter((s: string) => s?.trim()),
       });
@@ -88,7 +86,7 @@ const PublishPage: React.FC = () => {
       if (!silent) message.error('草稿保存失败');
     }
     setSaving(false);
-  }, [description, sections, selectedTags, draftKey, form]);
+  }, [body, selectedTags, draftKey, form]);
 
   useEffect(() => {
     const timer = setInterval(() => saveDraft(true), AUTO_SAVE_INTERVAL);
@@ -113,14 +111,15 @@ const PublishPage: React.FC = () => {
       const company = r.company.startsWith('【短评】') ? r.company : `【短评】${r.company}`;
       form.setFieldsValue({ company, sources: r.sources?.length > 0 ? r.sources : [''] });
       setSelectedTags(r.tags || []);
-      setDescription(r.description || '');
-      if (Array.isArray(r.sections) && r.sections.length > 0) {
-        setSections(r.sections.map((s: any) => ({
-          title: s.title || '',
-          content: s.content || '',
-        })));
+      // New format: `body` is raw HTML. Legacy format: stitch description + sections.
+      // `body` may also be a JSON metadata blob from the very-old editor — ignore it
+      // and rebuild from description + sections in that case.
+      const rawBody = r.body || '';
+      if (rawBody && !rawBody.startsWith('{')) {
+        setBody(rawBody);
+      } else {
+        setBody(composeBodyFromLegacy(r.description, r.sections));
       }
-      // Force all editors to remount with loaded content
       setResetKey(k => k + 1);
     }).catch(() => message.error('加载短评失败'));
   }, [editId]);
@@ -128,10 +127,44 @@ const PublishPage: React.FC = () => {
   // Restore draft on mount
   useEffect(() => {
     if (editId) return;
+    // StrictMode may fire effects twice in dev; this ref guarantees the
+    // confirm modal only pops up once per mount.
+    if (draftCheckedRef.current) return;
+    draftCheckedRef.current = true;
     api.get(`/api/drafts/${draftKey}`).then(res => {
       if (res.status === 204 || !res.data) return;
       const draft = res.data;
-      if (!draft.company && !draft.body) return;
+      // Treat the draft as empty when no company, no body text, no tags, no sources.
+      const bodyStr: string = typeof draft.body === 'string' ? draft.body : '';
+      const bodyHasText = (() => {
+        if (!bodyStr) return false;
+        // Old format stored JSON; peek into description/sections to see if it's hollow.
+        if (bodyStr.trim().startsWith('{')) {
+          try {
+            const parsed = JSON.parse(bodyStr);
+            const descText = String(parsed?.description || '').replace(/<[^>]*>/g, '').trim();
+            const secHasText = Array.isArray(parsed?.sections)
+              && parsed.sections.some((s: any) =>
+                String(s?.title || '').replace(/<[^>]*>/g, '').trim()
+                || String(s?.content || '').replace(/<[^>]*>/g, '').trim()
+              );
+            return !!(descText || secHasText);
+          } catch {
+            return bodyStr.trim().length > 0;
+          }
+        }
+        // New format: raw HTML. Check for any text content.
+        return bodyStr.replace(/<[^>]*>/g, '').trim().length > 0
+          || /<img\b/i.test(bodyStr);
+      })();
+      const hasSources = Array.isArray(draft.sources)
+        && draft.sources.some((s: string) => s && s.trim());
+      const hasTags = Array.isArray(draft.tags) && draft.tags.length > 0;
+      if (!draft.company?.trim() && !bodyHasText && !hasSources && !hasTags) {
+        // Stale or empty draft record — silently discard and skip the modal.
+        api.delete(`/api/drafts/${draftKey}`).catch(() => {});
+        return;
+      }
       Modal.confirm({
         title: '发现未完成草稿',
         content: `上次编辑于 ${dayjs(draft.savedAt).format('MM/DD HH:mm')}，是否恢复？`,
@@ -141,22 +174,22 @@ const PublishPage: React.FC = () => {
           if (draft.company) form.setFieldValue('company', draft.company);
           if (Array.isArray(draft.tags)) setSelectedTags(draft.tags);
           if (Array.isArray(draft.sources) && draft.sources.length > 0) form.setFieldValue('sources', draft.sources);
-          if (draft.body) {
-            try {
-              const parsed = JSON.parse(draft.body);
-              if (typeof parsed.description === 'string') setDescription(parsed.description);
-              if (Array.isArray(parsed.sections) && parsed.sections.length > 0) {
-                setSections(parsed.sections.map((s: any) => ({
-                  title: s.title || '',
-                  content: s.content || '',
-                })));
+          const b: string = typeof draft.body === 'string' ? draft.body : '';
+          if (b) {
+            if (b.trim().startsWith('{')) {
+              // Legacy JSON-wrapped draft → migrate on-the-fly to unified body.
+              try {
+                const parsed = JSON.parse(b);
+                setBody(composeBodyFromLegacy(parsed.description, parsed.sections));
+              } catch {
+                api.delete(`/api/drafts/${draftKey}`).catch(() => {});
+                message.warning('旧格式草稿已丢弃，请重新编辑');
+                return;
               }
-              setResetKey(k => k + 1);
-            } catch {
-              api.delete(`/api/drafts/${draftKey}`).catch(() => {});
-              message.warning('旧格式草稿已丢弃，请重新编辑');
-              return;
+            } else {
+              setBody(b);
             }
+            setResetKey(k => k + 1);
           }
           message.success('草稿已恢复');
         },
@@ -164,12 +197,6 @@ const PublishPage: React.FC = () => {
       });
     }).catch(() => {});
   }, [draftKey, editId]);
-
-  // Section helpers
-  const addSection = () => setSections(s => [...s, { title: '', content: '' }]);
-  const removeSection = (i: number) => setSections(s => s.filter((_, idx) => idx !== i));
-  const updateSection = (i: number, field: keyof Section, val: string) =>
-    setSections(s => s.map((sec, idx) => idx === i ? { ...sec, [field]: val } : sec));
 
   // Tag picker
   const tagPickerOptions = useMemo(() => {
@@ -212,21 +239,12 @@ const PublishPage: React.FC = () => {
       const res = await api.post('/api/ai/format', { rawText: aiRawText });
       const { title, description: aiDesc, sections: aiSections, sources: aiSources, _fallback, _reason } = res.data;
       if (title) form.setFieldValue('company', `【短评】${title}`);
-      if (typeof aiDesc === 'string') setDescription(aiDesc);
-      if (Array.isArray(aiSections)) {
-        setSections(
-          aiSections.length > 0
-            ? aiSections.map((s: any) => ({
-                title: s.title || '',
-                content: s.content || '',
-              }))
-            : [{ title: '', content: '' }]
-        );
-      }
+      // Fold the AI's structured output into a single body HTML stream
+      // (section titles become inline <h3 class="section-title">).
+      setBody(composeBodyFromLegacy(aiDesc, aiSections));
       if (Array.isArray(aiSources) && aiSources.length > 0) {
         form.setFieldValue('sources', aiSources);
       }
-      // Force editors to remount with AI-filled content
       setResetKey(k => k + 1);
       if (_fallback) {
         message.warning(_reason || 'AI 解析失败，已填入原文供你手动整理');
@@ -243,29 +261,23 @@ const PublishPage: React.FC = () => {
   const stripHtml = (html: string) => html.replace(/<[^>]*>/g, '').trim();
 
   const handleSubmit = async (values: any) => {
-    const hasDesc = stripHtml(description).length > 0;
-    const hasSections = sections.some(s => stripHtml(s.title).length > 0 || stripHtml(s.content).length > 0);
-    if (!hasDesc && !hasSections) {
-      message.warning('请填写摘要或至少一个观点'); return;
+    const bodyHasText = stripHtml(body).length > 0 || /<img\b/i.test(body);
+    if (!bodyHasText) {
+      message.warning('请填写正文内容'); return;
     }
     if (selectedTags.length === 0) {
       message.warning('请至少选择一个标签'); return;
     }
     setLoading(true);
     try {
-      // Filter out completely empty sections
-      const cleanSections = sections
-        .filter(s => stripHtml(s.title).length > 0 || stripHtml(s.content).length > 0)
-        .map(s => ({
-          title: s.title,
-          content: s.content,
-        }));
-
+      // New unified format: everything lives in `body` HTML. We clear
+      // description/sections to keep the schema consistent — the backend
+      // tolerates nullables.
       const payload = {
         company: values.company,
-        description,
-        sections: cleanSections,
-        body: null, // images embedded inline in the HTML content
+        body,
+        description: '',
+        sections: [],
         tags: selectedTags,
         sources: (values.sources || []).filter((s: string) => s?.trim()),
       };
@@ -287,7 +299,8 @@ const PublishPage: React.FC = () => {
   };
 
   const company = form.getFieldValue('company') || '【短评】标题预览';
-  const validSections = sections.filter(s => stripHtml(s.title).length > 0 || stripHtml(s.content).length > 0);
+  // For the preview modal: extract inline subtitles as a numbered list.
+  const previewTitles = extractSectionTitles(body);
 
   return (
     <div style={{ maxWidth: 860, margin: '0 auto' }}>
@@ -377,109 +390,25 @@ const PublishPage: React.FC = () => {
             <Input size="large" />
           </Form.Item>
 
-          {/* 事件摘要 — rich text */}
+          {/* 正文 — 单一富文本，子标题行内 */}
           <Form.Item label={
             <span>
-              事件摘要
+              正文内容
               <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>
-                支持加粗、颜色、图片（光标处插入）等格式
+                选中一行后点击工具栏「子标题」按钮，可把它转为橙色小标题（如"观点一：…"）
               </Text>
             </span>
           }>
             <RichTextEditor
-              key={`desc-${resetKey}`}
-              initialContent={description}
-              onChange={setDescription}
-              placeholder="概括核心事件或背景..."
-              minHeight={120}
+              key={`body-${resetKey}`}
+              initialContent={body}
+              onChange={setBody}
+              placeholder={'贴入或撰写短评正文。用「子标题」工具按钮标记"观点一/技术亮点"等段落...'}
+              minHeight={320}
               allowImages
+              allowSectionTitle
             />
           </Form.Item>
-
-          <Divider style={{ margin: '16px 0' }} />
-
-          {/* 观点块 */}
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text strong>
-                观点 / 技术亮点
-                <Text type="secondary" style={{ fontSize: 11, fontWeight: 400, marginLeft: 6 }}>
-                  每个编辑框均支持富文本格式和内联图片
-                </Text>
-              </Text>
-              <Button
-                type="dashed"
-                size="small"
-                icon={<PlusOutlined />}
-                onClick={addSection}
-                disabled={sections.length >= 8}
-              >
-                添加观点
-              </Button>
-            </div>
-
-            {sections.map((sec, i) => (
-              <div
-                key={i}
-                style={{
-                  display: 'flex',
-                  gap: 10,
-                  marginBottom: 16,
-                  padding: '12px 14px',
-                  background: '#FDFCF8',
-                  border: '1px solid #EDE0C4',
-                  borderRadius: 4,
-                  borderLeft: '3px solid #FF6900',
-                }}
-              >
-                {/* Circle number */}
-                <div style={{
-                  flexShrink: 0,
-                  width: 24, height: 24, borderRadius: '50%',
-                  background: '#FF6A00', color: '#fff',
-                  fontSize: 12, fontWeight: 700,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  marginTop: 6,
-                }}>
-                  {i + 1}
-                </div>
-
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  {/* Section title — compact rich editor (no images) */}
-                  <div style={{ marginBottom: 8 }}>
-                    <RichTextEditor
-                      key={`sec-title-${i}-${resetKey}`}
-                      initialContent={sec.title}
-                      onChange={val => updateSection(i, 'title', val)}
-                      placeholder={`副标题（如"技术亮点${i + 1}"、"观点${i + 1}"等）`}
-                      minHeight={40}
-                      allowImages={false}
-                    />
-                  </div>
-                  {/* Section content — full rich editor with images */}
-                  <RichTextEditor
-                    key={`sec-content-${i}-${resetKey}`}
-                    initialContent={sec.content}
-                    onChange={val => updateSection(i, 'content', val)}
-                    placeholder="详细说明，可插入图片..."
-                    minHeight={80}
-                    allowImages
-                  />
-                </div>
-
-                {sections.length > 1 && (
-                  <Tooltip title="删除此观点">
-                    <MinusCircleOutlined
-                      onClick={() => removeSection(i)}
-                      style={{ color: '#ccc', fontSize: 16, marginTop: 6, cursor: 'pointer', flexShrink: 0 }}
-                    />
-                  </Tooltip>
-                )}
-              </div>
-            ))}
-          </div>
-
-          <Divider style={{ margin: '16px 0' }} />
 
           {/* 标签 */}
           <Form.Item label="标签" required>
@@ -543,14 +472,30 @@ const PublishPage: React.FC = () => {
               <div>
                 <Text strong>参考来源（选填）</Text>
                 {fields.map(({ key, name, ...rest }) => (
-                  <Space key={key} style={{ display: 'flex', marginTop: 8 }} align="start">
-                    <Form.Item {...rest} name={name} style={{ marginBottom: 0, flex: 1, minWidth: 0, width: '100%' }}>
-                      <Input placeholder="https://..." />
+                  <div
+                    key={key}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      marginTop: 8,
+                      width: '100%',
+                    }}
+                  >
+                    <Form.Item
+                      {...rest}
+                      name={name}
+                      style={{ marginBottom: 0, flex: 1, minWidth: 0 }}
+                    >
+                      <Input placeholder="https://..." style={{ width: '100%' }} />
                     </Form.Item>
                     {fields.length > 1 && (
-                      <MinusCircleOutlined onClick={() => remove(name)} style={{ color: '#999', marginTop: 8 }} />
+                      <MinusCircleOutlined
+                        onClick={() => remove(name)}
+                        style={{ color: '#999', flexShrink: 0 }}
+                      />
                     )}
-                  </Space>
+                  </div>
                 ))}
                 <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />} style={{ marginTop: 8 }}>
                   添加来源
@@ -595,11 +540,15 @@ const PublishPage: React.FC = () => {
             style={{ color: '#888', fontSize: 13, margin: '8px 0 10px', lineHeight: 1.6,
               overflow: 'hidden', display: '-webkit-box',
               WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}
-            dangerouslySetInnerHTML={{ __html: description || '（摘要为空）' }}
+            // Card preview = first few paragraphs of body with HTML tags stripped
+            dangerouslySetInnerHTML={{
+              __html: (body || '（正文为空）')
+                .replace(/<h3[^>]*class=['"][^'"]*section-title[^'"]*['"][^>]*>[\s\S]*?<\/h3>/gi, '')
+            }}
           />
-          {validSections.length > 0 && (
+          {previewTitles.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-              {validSections.slice(0, 5).map((sec, i) => (
+              {previewTitles.slice(0, 5).map((t, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                   <span style={{
                     flexShrink: 0, marginTop: 2,
@@ -608,8 +557,7 @@ const PublishPage: React.FC = () => {
                     fontSize: 11, fontWeight: 700,
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                   }}>{i + 1}</span>
-                  <span style={{ fontSize: 13, color: '#333', lineHeight: 1.5 }}
-                    dangerouslySetInnerHTML={{ __html: sec.title || '（无标题）' }} />
+                  <span style={{ fontSize: 13, color: '#333', lineHeight: 1.5 }}>{t}</span>
                 </div>
               ))}
             </div>

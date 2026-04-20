@@ -60,6 +60,23 @@
   outline-offset: 2px;
 }
 
+/* ── Section title (inline subtitle) ────────────────────────────────── */
+/* Used by both the editor (via SectionTitleHeading extension) and the
+   display views (HtmlRenderer). Keep styling in one place so the editor
+   preview matches the published card / detail view exactly. */
+h3.section-title,
+.rich-body h3.section-title,
+.rich-editor-content h3.section-title {
+  display: block;
+  font-size: 17px;
+  font-weight: 700;
+  color: #FF6A00;
+  margin: 14px 0 6px;
+  padding-left: 10px;
+  border-left: 3px solid #FF6A00;
+  line-height: 1.5;
+}
+
 /* ── Image size classes ─────────────────────────────────────────────── */
 /* These classes are applied both inside the editor and in display views */
 

@@ -71,6 +71,9 @@ export async function distributeRoutes(app: FastifyInstance) {
     const dtBaseOverride = getDingTalkBaseUrlOverride();
     const baseUrl = dtBaseOverride || resolvePublicBaseUrl(request);
     const guestUrl = `${baseUrl}/guest/${token}`;
+    // Internal review URL (requires login) — the DingTalk group is the
+    // internal team, so buttons link members to the authenticated page.
+    const reviewUrl = `${baseUrl}/reviews/${reviewId}`;
 
     // Look up the author for the card byline
     const author = review.authorId
@@ -116,6 +119,7 @@ export async function distributeRoutes(app: FastifyInstance) {
       tags: (review.tags as string[]) || [],
       heatScore: review.heatScore,
       guestUrl,
+      reviewUrl,
       reviewId,
       baseUrl,
     });
@@ -170,10 +174,23 @@ export async function distributeRoutes(app: FastifyInstance) {
       : null;
     const authorName = author?.name || currentUser.name || '成员';
 
+    // Determine body format (new HTML vs legacy JSON metadata)
+    const rawBody = review.body || '';
+    const isHtmlBody = rawBody && !rawBody.startsWith('{');
+
     const dtResult = await sendPublishReminderNotification({
       authorName,
       reviewTitle: review.company,
       reviewUrl,
+      body: isHtmlBody ? rawBody : undefined,
+      description: typeof review.description === 'string' ? review.description : '',
+      sections: ((review.sections as any[]) || []).map((s: any) => ({
+        title: s.title || '',
+        content: s.content || '',
+      })),
+      tags: (review.tags as string[]) || [],
+      reviewId: id,
+      baseUrl,
     });
 
     return { success: true, dingtalk: dtResult };
@@ -196,6 +213,7 @@ export async function distributeRoutes(app: FastifyInstance) {
     const dtBaseOverride = getDingTalkBaseUrlOverride();
     const baseUrl = dtBaseOverride || resolvePublicBaseUrl(request);
     const guestUrl = `${baseUrl}/guest/${token}`;
+    const reviewUrl = `${baseUrl}/reviews/${id}`;
 
     const author = review.authorId
       ? db.select().from(users).where(eq(users.id, review.authorId)).get()
@@ -227,6 +245,7 @@ export async function distributeRoutes(app: FastifyInstance) {
       tags: (review.tags as string[]) || [],
       heatScore: review.heatScore,
       guestUrl,
+      reviewUrl,
       reviewId: id,
       baseUrl,
     });

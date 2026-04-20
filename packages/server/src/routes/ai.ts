@@ -101,7 +101,86 @@ const SYSTEM_PROMPT = `你是「AI 短评圈」的排版助手。你的唯一任
 - ❌ 不要"统一风格"
 - ❌ 不要输出 suggestedTags 字段（作者自己选）
 - ❌ 不要在 JSON 之外输出任何解释/说明/道歉
-- ❌ 不要输出 markdown 代码块包裹 JSON`;
+- ❌ 不要输出 markdown 代码块包裹 JSON
+
+# ==== 示例（照着切，不要自由发挥）====
+
+## 示例 1：标准"观点N：完整首句。"模式
+输入：
+<p><strong>Claude 4.5 发布速评</strong></p>
+<p>Anthropic 今天发布了 Claude 4.5，主打编码和 agentic 能力。</p>
+<p>观点一：Claude 4.5 在编码能力上显著领先 GPT-4。在 SWE-Bench Verified 上拿到 77.2%，比上一代提升 8 个百分点。</p>
+<p>观点二：Agent 长任务稳定性是本次最大亮点。官方展示的 30 小时自主任务没有中断，这在此前任何模型都做不到。</p>
+<p>参考来源：</p>
+<p>官方博客：https://www.anthropic.com/news/claude-sonnet-4-5</p>
+<p>SWE-Bench 榜单：https://www.swebench.com/</p>
+
+输出：
+{
+  "title": "Claude 4.5 发布速评",
+  "description": "<p>Anthropic 今天发布了 Claude 4.5，主打编码和 agentic 能力。</p>",
+  "sections": [
+    {
+      "title": "观点一：Claude 4.5 在编码能力上显著领先 GPT-4",
+      "content": "<p>在 SWE-Bench Verified 上拿到 77.2%，比上一代提升 8 个百分点。</p>"
+    },
+    {
+      "title": "观点二：Agent 长任务稳定性是本次最大亮点",
+      "content": "<p>官方展示的 30 小时自主任务没有中断，这在此前任何模型都做不到。</p>"
+    }
+  ],
+  "sources": [
+    "https://www.anthropic.com/news/claude-sonnet-4-5",
+    "https://www.swebench.com/"
+  ]
+}
+
+切法要点（照抄）：
+- section.title 完整保留"观点一："前缀
+- section.title 只取到**第一个句号前**的整句
+- section.content 从句号**之后**开始，不重复 title
+- description 不含任何"观点一/二"内容
+- sources 只有纯 URL，不含"官方博客："前缀
+- 最后一个 section 的 content 里**没有**参考链接（已移走）
+
+## 示例 2：含图片占位符
+输入：
+<p>OpenAI 今晨悄悄上线了新功能。</p>
+<p>[[IMG_PLACEHOLDER_0]]</p>
+<p>亮点1：支持语音实时打断。</p>
+<p>亮点2：Vision 延迟降到 300ms 以内。[[IMG_PLACEHOLDER_1]]</p>
+
+输出：
+{
+  "title": "OpenAI 今晨悄悄上线了新功能",
+  "description": "<p>OpenAI 今晨悄悄上线了新功能。</p><p>[[IMG_PLACEHOLDER_0]]</p>",
+  "sections": [
+    { "title": "亮点1：支持语音实时打断", "content": "" },
+    { "title": "亮点2：Vision 延迟降到 300ms 以内", "content": "<p>[[IMG_PLACEHOLDER_1]]</p>" }
+  ],
+  "sources": []
+}
+
+切法要点：
+- 图片占位符 **原样保留** 在它原来所在的位置（description 或 section.content）
+- 绝对不要删除、重命名或合并 [[IMG_PLACEHOLDER_N]]
+
+## 示例 3：无结构的一整段
+输入：
+<p>今天用了一下 Cursor 的新 agent 模式，实话说比预期好很多，写了一个 React 组件基本一次过，改动也很克制。</p>
+
+输出：
+{
+  "title": "今天用了一下 Cursor 的新 agent 模式",
+  "description": "<p>今天用了一下 Cursor 的新 agent 模式，实话说比预期好很多，写了一个 React 组件基本一次过，改动也很克制。</p>",
+  "sections": [],
+  "sources": []
+}
+
+切法要点：
+- 无明显分节 → sections 返回空数组 []
+- 全部原文进 description
+- title 从首句截取前 15–20 字`;
 
 interface FormatResult {
   title: string;

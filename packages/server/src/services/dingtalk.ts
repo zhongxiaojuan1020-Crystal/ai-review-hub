@@ -172,6 +172,13 @@ export async function sendDistributeNotification(params: {
   tags: string[];
   heatScore: number | null;
   guestUrl: string;
+  /**
+   * Internal app URL (requires login). When provided, the action buttons
+   * link here instead of the guest URL — since the DingTalk group is the
+   * internal team, members should go straight to the authenticated page
+   * where they can score / comment.
+   */
+  reviewUrl?: string;
   reviewId: string;      // for building public image URLs
   baseUrl: string;       // public base URL for image serving
 }): Promise<{ ok: boolean; errcode?: number; errmsg?: string; reason?: string }> {
@@ -265,6 +272,11 @@ export async function sendDistributeNotification(params: {
   const wrapUrl = (url: string) =>
     `dingtalk://dingtalkclient/page/link?url=${encodeURIComponent(url)}&pc_slide=false`;
 
+  // Prefer the internal link for group members so they can score / comment
+  // directly after logging in; fall back to the guest URL if no internal
+  // URL was provided.
+  const primaryUrl = params.reviewUrl || params.guestUrl;
+
   const payload = {
     msgtype: 'actionCard',
     actionCard: {
@@ -274,9 +286,9 @@ export async function sendDistributeNotification(params: {
       // Horizontal layout for multiple buttons
       btnOrientation: '1',
       btns: [
-        { title: '📖 阅读全文', actionURL: wrapUrl(params.guestUrl) },
-        { title: '👍 点赞',     actionURL: wrapUrl(params.guestUrl) },
-        { title: '💬 评论',     actionURL: wrapUrl(params.guestUrl) },
+        { title: '📖 阅读全文', actionURL: wrapUrl(primaryUrl) },
+        { title: '👍 点赞',     actionURL: wrapUrl(primaryUrl) },
+        { title: '💬 评论',     actionURL: wrapUrl(primaryUrl) },
       ],
     },
   };
@@ -284,34 +296,93 @@ export async function sendDistributeNotification(params: {
 }
 
 /**
- * Send a publish-reminder notification so team members know a new
- * review has been posted and they should come score it.
+ * Send a publish-reminder notification with the full review content
+ * so team members can read it inline in the DingTalk group without
+ * having to click through to the app.
  *
- * The action button links to the internal app review page (requires login),
- * so members can sign in and leave their scores.
+ * Mirrors the layout of sendDistributeNotification but always links
+ * to the internal app page (requires login) so members can score/comment.
  */
 export async function sendPublishReminderNotification(params: {
   authorName: string;
   reviewTitle: string;
   reviewUrl: string;   // internal app URL, e.g. https://app.example.com/reviews/:id
+  /** New unified body HTML (inline subtitles + images) */
+  body?: string;
+  /** Legacy structured description HTML */
+  description?: string;
+  sections?: { title: string; content: string }[];
+  tags?: string[];
+  reviewId?: string;
+  baseUrl?: string;    // public base URL for serving body images
 }): Promise<{ ok: boolean; errcode?: number; errmsg?: string; reason?: string }> {
   const wrapUrl = (url: string) =>
     `dingtalk://dingtalkclient/page/link?url=${encodeURIComponent(url)}&pc_slide=false`;
+
+  const lines: string[] = [];
+  lines.push(`### ${params.authorName} 新发布了一条短评`);
+  lines.push('');
+  lines.push(`**「${params.reviewTitle}」**`);
+  lines.push('');
+
+  // ── Body content ────────────────────────────────────────────────────
+  const hasNewBody = params.body && !params.body.startsWith('{');
+  if (hasNewBody && params.body) {
+    // Replace base64 inline images with public URLs before converting.
+    let bodyForMd = params.body;
+    if (params.baseUrl && params.reviewId) {
+      const imgBase = `${params.baseUrl}/api/public/review-image/${params.reviewId}/body`;
+      let idx = 0;
+      bodyForMd = bodyForMd.replace(
+        /<img\b[^>]*\bsrc=(['"])(data:[^'"]+)\1[^>]*>/gi,
+        () => `<img src="${imgBase}/${idx++}" />`
+      );
+    }
+    lines.push(htmlToMarkdown(bodyForMd));
+  } else if (params.description || (params.sections && params.sections.length > 0)) {
+    // Legacy structured format
+    const descMd = params.description ? htmlToMarkdown(params.description) : '';
+    if (descMd) { lines.push(descMd); lines.push(''); }
+    if (params.sections && params.sections.length > 0) {
+      lines.push('---');
+      lines.push('');
+      params.sections.forEach((sec, i) => {
+        const titleMd = htmlToMarkdown(sec.title || '').trim();
+        const contentMd = htmlToMarkdown(sec.content || '').trim();
+        lines.push(`**${i + 1}. ${titleMd}**`);
+        if (contentMd) { lines.push(''); lines.push(contentMd); }
+        lines.push('');
+      });
+    }
+  } else {
+    // No content at all — fallback to simple invite text
+    lines.push('邀请大家尽快阅读并评分 👇');
+  }
+
+  // ── Tags ────────────────────────────────────────────────────────────
+  if (params.tags && params.tags.length > 0) {
+    lines.push('');
+    lines.push(params.tags.map(t => `#${t}`).join('  '));
+  }
+
+  // ── Safety: strip base64 remnants + enforce 20KB limit ─────────────
+  let text = lines.join('\n');
+  text = text.replace(/\[\[IMG:[^\]]*?\]\]/g, '');
+  text = text.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g, '');
+  const MAX_BYTES = 18000;
+  if (Buffer.byteLength(text, 'utf8') > MAX_BYTES) {
+    while (Buffer.byteLength(text, 'utf8') > MAX_BYTES) text = text.slice(0, -100);
+    text += '\n\n…… 内容过长，请点击下方按钮查看完整版';
+  }
 
   const payload = {
     msgtype: 'actionCard',
     actionCard: {
       title: `[短评] ${params.authorName} 发布了新短评`,
-      text: [
-        `### ${params.authorName} 新发布了一条短评`,
-        '',
-        `**「${params.reviewTitle}」**`,
-        '',
-        '邀请大家尽快阅读并评分 👇',
-      ].join('\n'),
+      text,
       btnOrientation: '0',
       btns: [
-        { title: '📖 阅读并评分', actionURL: wrapUrl(params.reviewUrl) },
+        { title: '📖 阅读原文 / 评分', actionURL: wrapUrl(params.reviewUrl) },
       ],
     },
   };

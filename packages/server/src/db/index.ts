@@ -3,6 +3,7 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 import * as schema from './schema.js';
 import { getConfig } from '../config.js';
 import { DEFAULT_DIMENSION_WEIGHTS, DEFAULT_SUPERVISOR_WEIGHT, DEFAULT_GUEST_TOKEN_EXPIRY_HOURS } from '@ai-review/shared';
+import { migrateReviewsToUnifiedBody } from './migrate-reviews-to-body.js';
 
 let db: ReturnType<typeof createDb>;
 
@@ -211,6 +212,15 @@ function runMigrations(sqlite: InstanceType<typeof Database>) {
       insertUser.run(u.id, u.name, u.role, u.id, u.hash);
     }
     console.log('Seeded 5 initial team members.');
+  }
+
+  // Normalize any legacy reviews to the unified `body` HTML format, so every
+  // renderer / editor only has to speak one shape. Idempotent — rows already
+  // migrated are skipped.
+  try {
+    migrateReviewsToUnifiedBody(sqlite);
+  } catch (err) {
+    console.error('[migration] reviews → unified body failed:', err);
   }
 
   console.log('Database ready at:', getConfig().databasePath);

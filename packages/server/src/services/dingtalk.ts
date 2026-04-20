@@ -198,10 +198,19 @@ export async function sendDistributeNotification(params: {
     // New rich-text (word-like editor) — convert to markdown
     lines.push(htmlToMarkdown(params.body));
   } else {
-    // Structured editor: description + sections
-    const descMd = params.description
-      ? htmlToMarkdown(params.description)
-      : '';
+    // Structured editor: description + sections.
+    // Replace inline base64 <img> in description/section HTML with public
+    // URLs so they render through htmlToMarkdown (which strips data: URIs).
+    const replaceInline = (html: string, pathPrefix: string): string => {
+      let idx = 0;
+      return html.replace(
+        /<img\b[^>]*\bsrc=(['"])(data:[^'"]+)\1[^>]*>/gi,
+        () => `<img src="${imgBase}/${pathPrefix}/${idx++}" />`
+      );
+    };
+
+    const descHtml = params.description ? replaceInline(params.description, 'desc-inline') : '';
+    const descMd = descHtml ? htmlToMarkdown(descHtml) : '';
     if (descMd) {
       lines.push('**事件描述**');
       lines.push('');
@@ -209,7 +218,7 @@ export async function sendDistributeNotification(params: {
       lines.push('');
     }
 
-    // Description images
+    // Top-level description images (legacy `descriptionImages` array)
     if (params.descriptionImages && params.descriptionImages.length > 0) {
       params.descriptionImages.forEach((_img, i) => {
         lines.push(`![图片](${imgBase}/desc/${i})`);
@@ -223,13 +232,14 @@ export async function sendDistributeNotification(params: {
       lines.push('');
       params.sections.forEach((sec, i) => {
         const titleMd = htmlToMarkdown(sec.title || '').trim();
-        const contentMd = htmlToMarkdown(sec.content || '').trim();
+        const contentHtml = replaceInline(sec.content || '', `sec-inline/${i}`);
+        const contentMd = htmlToMarkdown(contentHtml).trim();
         lines.push(`**${i + 1}. ${titleMd}**`);
         if (contentMd) {
           lines.push('');
           lines.push(contentMd);
         }
-        // Section images
+        // Top-level section images (legacy `section.images` array)
         if (sec.images && sec.images.length > 0) {
           lines.push('');
           sec.images.forEach((_img, imgIdx) => {
@@ -340,15 +350,30 @@ export async function sendPublishReminderNotification(params: {
     }
     lines.push(htmlToMarkdown(bodyForMd));
   } else if (params.description || (params.sections && params.sections.length > 0)) {
-    // Legacy structured format
-    const descMd = params.description ? htmlToMarkdown(params.description) : '';
+    // Legacy structured format — replace inline base64 imgs with public URLs
+    // so they render in DingTalk (otherwise htmlToMarkdown strips data: imgs).
+    const imgBaseRoot = params.baseUrl && params.reviewId
+      ? `${params.baseUrl}/api/public/review-image/${params.reviewId}`
+      : null;
+    const replaceInline = (html: string, pathPrefix: string): string => {
+      if (!imgBaseRoot) return html;
+      let idx = 0;
+      return html.replace(
+        /<img\b[^>]*\bsrc=(['"])(data:[^'"]+)\1[^>]*>/gi,
+        () => `<img src="${imgBaseRoot}/${pathPrefix}/${idx++}" />`
+      );
+    };
+
+    const descHtml = params.description ? replaceInline(params.description, 'desc-inline') : '';
+    const descMd = descHtml ? htmlToMarkdown(descHtml) : '';
     if (descMd) { lines.push(descMd); lines.push(''); }
     if (params.sections && params.sections.length > 0) {
       lines.push('---');
       lines.push('');
       params.sections.forEach((sec, i) => {
         const titleMd = htmlToMarkdown(sec.title || '').trim();
-        const contentMd = htmlToMarkdown(sec.content || '').trim();
+        const contentHtml = replaceInline(sec.content || '', `sec-inline/${i}`);
+        const contentMd = htmlToMarkdown(contentHtml).trim();
         lines.push(`**${i + 1}. ${titleMd}**`);
         if (contentMd) { lines.push(''); lines.push(contentMd); }
         lines.push('');

@@ -94,4 +94,64 @@ export async function publicImageRoutes(app: FastifyInstance) {
     reply.header('Cache-Control', 'public, max-age=86400');
     return reply.send(parsed.buffer);
   });
+
+  // ── Inline base64 images in legacy description HTML ─────────────────
+  // /api/public/review-image/:reviewId/desc-inline/:idx
+  // Extracts the Nth <img src="data:..."> embedded in the description field.
+  // Needed for reviews published with the RichTextEditor where images are
+  // stored as inline data-URIs inside the description HTML.
+  app.get('/api/public/review-image/:reviewId/desc-inline/:idx', async (request, reply) => {
+    const { reviewId, idx } = request.params as { reviewId: string; idx: string };
+    const db = getDb();
+    const review = db.select().from(reviews).where(eq(reviews.id, reviewId)).get();
+    if (!review) return reply.status(404).send('Not found');
+
+    const html = typeof review.description === 'string' ? review.description : '';
+    const imgs = extractInlineDataUris(html);
+    const imgData = imgs[parseInt(idx, 10)];
+    if (!imgData) return reply.status(404).send('Image not found');
+
+    const parsed = parseDataUri(imgData);
+    if (!parsed) return reply.status(400).send('Invalid image data');
+
+    reply.header('Content-Type', parsed.mime);
+    reply.header('Cache-Control', 'public, max-age=86400');
+    return reply.send(parsed.buffer);
+  });
+
+  // ── Inline base64 images in legacy section content HTML ─────────────
+  // /api/public/review-image/:reviewId/sec-inline/:secIdx/:imgIdx
+  app.get('/api/public/review-image/:reviewId/sec-inline/:secIdx/:imgIdx', async (request, reply) => {
+    const { reviewId, secIdx, imgIdx } = request.params as {
+      reviewId: string; secIdx: string; imgIdx: string;
+    };
+    const db = getDb();
+    const review = db.select().from(reviews).where(eq(reviews.id, reviewId)).get();
+    if (!review) return reply.status(404).send('Not found');
+
+    const sections = (review.sections as any[]) || [];
+    const section = sections[parseInt(secIdx, 10)];
+    if (!section) return reply.status(404).send('Section not found');
+
+    const imgs = extractInlineDataUris(String(section.content || ''));
+    const imgData = imgs[parseInt(imgIdx, 10)];
+    if (!imgData) return reply.status(404).send('Image not found');
+
+    const parsed = parseDataUri(imgData);
+    if (!parsed) return reply.status(400).send('Invalid image data');
+
+    reply.header('Content-Type', parsed.mime);
+    reply.header('Cache-Control', 'public, max-age=86400');
+    return reply.send(parsed.buffer);
+  });
+}
+
+/** Extract all `<img src="data:...">` URIs from HTML in document order. */
+function extractInlineDataUris(html: string): string[] {
+  const out: string[] = [];
+  if (!html) return out;
+  const re = /<img\b[^>]*\bsrc=(['"])(data:[^'"]+)\1[^>]*>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) out.push(m[2]);
+  return out;
 }
